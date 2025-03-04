@@ -208,8 +208,8 @@ impl crate::Component for Editor {
     // fn swap(self) -> Self::Swap{//impl Component {
     //     crate::Game::from(self)
     // }
-    fn swap(self) -> impl Component {
-        crate::Game::from(self)
+    fn swap(self) -> Box<dyn Component> {//impl Component {
+        Box::new(crate::Game::from(self))
     }
     fn update(&mut self) {
         {}

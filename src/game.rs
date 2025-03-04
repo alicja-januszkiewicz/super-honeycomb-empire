@@ -305,13 +305,13 @@ impl crate::Component for Game {
         crate::draw(&self, &layout, assets, time);
     }
     fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-        crate::poll_inputs(self, layout)
+        crate::poll_inputs(self, None, layout)
     }
     // fn swap(self) -> Self::Swap{//impl Component {
     //     crate::Editor::from(self)
     // }
-    fn swap(self) -> impl Component {
-        crate::Editor::from(self)
+    fn swap(self) -> Box<dyn Component> {
+        Box::new(crate::Editor::from(self))
     }
     fn update(&mut self) {
         self._update()

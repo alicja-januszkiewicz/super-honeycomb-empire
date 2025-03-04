@@ -26,7 +26,7 @@ use game::*;
 //use miniquad::{gl::glShaderSource, native::linux_x11::libx11::VisibilityChangeMask, UniformDesc};
 use miniquad::UniformDesc;
 use rules::Ruleset;
-use ui::{main_menu, Endpoint};
+use ui::{main_menu};
 use world::*;
 use inputs::*;
 use map_editor::*;
@@ -191,7 +191,7 @@ async fn load_assets() -> Assets {
 fn window_conf() -> Conf {
     Conf {
         window_title: "Super Honeycomb Empire".to_owned(),
-        fullscreen: true,
+        fullscreen: false,
         ..Default::default()
     }
 }
@@ -264,15 +264,8 @@ async fn main() {
 
     if exit {return};
 
-    // let mut game = new_game(Ruleset::from(ui), &mut assets);
-    let endpoint = ui.endpoint;
-    let players = std::mem::take(&mut ui.players);
-    let rules = Ruleset::from(ui);
-    let mut game = Game::new(players, rules, &mut assets);
-    // let mut game = Game::from_ui(ui, &mut assets);
-    let endpoint_app = network::Endpoint::from_ui(endpoint, game);
-    println!("init complete!");
-
+    let mut app = App::<Offline, Game>::from_ui(ui, &mut assets);
+    // let app: Box<dyn Component> = Box::new(a);
 
     // let args = Cli::parse();
     // match args.mode {
@@ -311,12 +304,12 @@ async fn main() {
 
     let mut time = 0.0;
     while !exit {
-        exit = endpoint_app.poll(&mut layout);
-        endpoint_app.draw(&mut layout, &mut assets, time);
+        exit = app.poll(&mut layout);
+        app.draw(&mut layout, &mut assets, time);
         next_frame().await;
-        endpoint_app = endpoint_app.update();
+        app = app.update();
         // if is_key_pressed(KeyCode::F1) {
-        //     endpoint_app = endpoint_app.swap_app();
+        //     app = app.swap_app();
         // }
         time += get_frame_time();
     }

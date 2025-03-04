@@ -9,7 +9,7 @@ use strum::IntoEnumIterator;
 
 use crate::game::{Game, VictoryCondition};
 use crate::mquad::Assets;
-use crate::network::{ChatClient, ChatMsg, ChatServer, Client, Component, NullEndpoint, Server};
+use crate::network::{ChatMsg, Client, Component, EndpointType, Chat, Mode, Offline, SendChat, Server};
 use crate::rules::Ruleset;
 use crate::world::Player;
 use crate::{next_frame, vec2, Vec2, FONT};
@@ -78,12 +78,12 @@ pda! {
     Main => Settings,
 }
 
-#[derive(Debug, Clone)]
-enum EndpointType {
-    Null,
-    Client,
-    Server,
-}
+// #[derive(Debug, Clone)]
+// enum EndpointType {
+//     // Null,
+//     Client,
+//     Server,
+// }
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -102,7 +102,7 @@ enum Message {
 pub struct Ui {
     menu: PushdownAutomaton<State, Input, State>,
     ip_address: String,
-    pub endpoint: Endpoint,
+    pub endpoint: Box<dyn Chat>,
     chat_message: String,
     pub players: Vec<Player>,
     victory_condition: VictoryCondition,
@@ -110,85 +110,24 @@ pub struct Ui {
     exit: bool,
 }
 
-pub enum Endpoint {
-    Client(Client),
-    Server(Server),
-    Offline(),
-}
+// pub enum Endpoint {
+//     Client(Client),
+//     Server(Server),
+//     Offline(),
+// }
 
-impl Endpoint {
-    fn get_chatlog(&self) -> Vec<&ChatMsg> {
-        match self {
-            Endpoint::Client(c) => c.chatlog.iter().collect(),
-            Endpoint::Server(s) => s.chatlog.iter().collect(),
-            Endpoint::Offline() => panic!(),
-        }
-    }
-}
-
-impl Endpoint {
-    fn send_chat_message(&mut self, msg: String) {
-        match self {
-            Endpoint::Client(c) => c.send_chat_message(msg),
-            Endpoint::Server(s) => s.send_chat_message(msg),
-            Endpoint::Offline() => panic!(),
-        };
-    }
-}
+// impl Endpoint {
+//     fn send_chat_message(&mut self, msg: String) {
+//         match self {
+//             Endpoint::Client(c) => c.send_chat_message(msg),
+//             Endpoint::Server(s) => s.send_chat_message(msg),
+//         };
+//     }
+// }
 
 impl From<Ui> for Ruleset {
     fn from(ui: Ui) -> Self {
         Self::default(ui.victory_condition, &ui.players)
-    }
-}
-
-fn update(ui: &mut Ui, message: Message) {
-    match message {
-        Message::Transition(input) => {
-            ui.menu.transition(input);
-        }
-        Message::IpAddressChanged(addr) => {
-            ui.ip_address = addr;
-        }
-        Message::ChatMessageChanged(msg) => {
-            println!("chat message changed!!!: `{}`", msg);
-            ui.chat_message = msg
-        }
-        Message::SendChatMessage => {
-            let msg = std::mem::take(&mut ui.chat_message);
-            ui.endpoint.send_chat_message(msg);
-        }
-        Message::TransitionAndSetEndpoint(input, endpoint) => {
-            ui.menu.transition(input);
-            match ui.endpoint {
-                Endpoint::Client(_) | Endpoint::Server(_) => return,
-                _ => {}
-            }
-            if matches!(endpoint, EndpointType::Null) {return}
-            ui.endpoint = match endpoint {
-                EndpointType::Null => panic!(), //todo!(), //Endpoint::Offline(NullEndpoint::new(None)),
-                EndpointType::Client => Endpoint::Client(Client::new(&ui.ip_address).unwrap()),
-                EndpointType::Server => Endpoint::Server(Server::new(&ui.ip_address).unwrap()),
-            };
-        }
-        Message::VictoryConditionNext => {
-            let i = VictoryCondition::iter().position(|vc| vc == ui.victory_condition).unwrap();
-            ui.victory_condition = VictoryCondition::iter().cycle().nth(i+1).unwrap();
-        }
-        Message::VictoryConditionPrev => {
-            let i = VictoryCondition::iter().rev().position(|vc| vc == ui.victory_condition).unwrap();
-            ui.victory_condition = VictoryCondition::iter().rev().cycle().nth(i+1).unwrap();
-            //ui.victory_condition = VictoryCondition::iter().rev().cycle().skip_while(|vc| *vc == ui.victory_condition).next().unwrap();
-            // let n = VictoryCondition::iter().skip_while(|vc| *vc == ui.victory_condition).count();
-            // let n = if n == 0 {VictoryCondition::iter().len()} else {n - 1};
-            // ui.victory_condition = VictoryCondition::iter().skip(n).next().unwrap();
-        }
-        Message::FogOfWarToggled => {
-            ui.fog_of_war = !ui.fog_of_war;
-        }
-        Message::Exit => {
-            ui.exit = true;
-        }
     }
 }
 
@@ -201,7 +140,7 @@ impl Ui {
         Self {
             menu: pda,
             ip_address: "127.0.0.1:8000".into(),
-            endpoint: Endpoint::Offline(),
+            endpoint: Box::new(Offline),
             chat_message: "".into(),
             players: vec![],
             victory_condition: VictoryCondition::Elimination,
@@ -210,25 +149,78 @@ impl Ui {
         }
     }
 }
-
-fn get_main_button(display_text: &str, message: Message) -> Button<Message> {
-    Button::new(Text::new(display_text).size(64).center().font(FONT_HANDLE))
-        .on_press(message)
-        .width(Length::Fixed(400.))
+impl Ui {
+    fn update(&mut self, message: Message) {
+        match message {
+            Message::Transition(input) => {
+                self.menu.transition(input);
+            }
+            Message::IpAddressChanged(addr) => {
+                self.ip_address = addr;
+            }
+            Message::ChatMessageChanged(msg) => {
+                // println!("chat message changed!!!: `{}`", msg);
+                self.chat_message = msg
+            }
+            Message::SendChatMessage => {
+                let msg = std::mem::take(&mut self.chat_message);
+                println!("sending chat message: {:}", msg);
+                self.endpoint.send_chat_message(msg);
+            }
+            Message::TransitionAndSetEndpoint(input, endpoint_type) => {
+                self.menu.transition(input);
+                // if self.endpoint.is_some() | endpoint.is_none() {return}
+                // self.endpoint = endpoint;
+                self.endpoint = match endpoint_type {
+                    EndpointType::Client => Box::new(Client::new(&self.ip_address).unwrap()),
+                    EndpointType::Server => Box::new(Server::new(&self.ip_address).unwrap()),
+                    EndpointType::Offline => Box::new(Offline),
+                };
+            }
+            Message::VictoryConditionNext => {
+                let i = VictoryCondition::iter().position(|vc| vc == self.victory_condition).unwrap();
+                self.victory_condition = VictoryCondition::iter().cycle().nth(i+1).unwrap();
+            }
+            Message::VictoryConditionPrev => {
+                let i = VictoryCondition::iter().rev().position(|vc| vc == self.victory_condition).unwrap();
+                self.victory_condition = VictoryCondition::iter().rev().cycle().nth(i+1).unwrap();
+                //self.victory_condition = VictoryCondition::iter().rev().cycle().skip_while(|vc| *vc == self.victory_condition).next().unwrap();
+                // let n = VictoryCondition::iter().skip_while(|vc| *vc == self.victory_condition).count();
+                // let n = if n == 0 {VictoryCondition::iter().len()} else {n - 1};
+                // self.victory_condition = VictoryCondition::iter().skip(n).next().unwrap();
+            }
+            Message::FogOfWarToggled => {
+                self.fog_of_war = !self.fog_of_war;
+            }
+            Message::Exit => {
+                self.exit = true;
+            }
+        }
+    }
 }
 
-fn get_sp_menu<'a>(state: &Ui) -> Container<'a, Message> {
+fn get_main_button(display_text: &str, message: Message) -> Button<Message> {
+    let scaling = screen_width() / 2560.0; // Reference width for 2K (2560 pixels)
+
+    Button::new(Text::new(display_text).size(64. * scaling).center().font(FONT_HANDLE))
+        .on_press(message)
+        .width(Length::Fixed(400. * scaling))
+}
+
+fn get_sp_menu<'a>(state: &'a Ui) -> Container<'a, Message> {
+    let scaling = screen_width() / 2560.0; // Reference width for 2K (2560 pixels)
+
     let m = center(column!()
-    .push(button(text("Choose Map").size(64).font(FONT_HANDLE).center()).on_press(Message::Transition(Input::ToMap)).width(900).height(900))
-    .push(checkbox("Fog of War", state.fog_of_war).on_toggle(|_| Message::FogOfWarToggled).font(FONT_HANDLE).text_size(64).size(64))
+    .push(button(text("Choose Map").size(64. * scaling).font(FONT_HANDLE).center()).on_press(Message::Transition(Input::ToMap)).width(900. * scaling).height(900. * scaling))
+    .push(checkbox("Fog of War", state.fog_of_war).on_toggle(|_| Message::FogOfWarToggled).font(FONT_HANDLE).text_size(64. * scaling).size(64. * scaling))
     .push(row!(
-        text("Victory Condition:").size(64).font(FONT_HANDLE),
-        button(text("<").size(64).font(FONT_HANDLE)).on_press(Message::VictoryConditionPrev),
-        text(state.victory_condition.to_string()).size(64).font(FONT_HANDLE),
-        button(text(">").size(64).font(FONT_HANDLE)).on_press(Message::VictoryConditionNext),
-    ).spacing(20))
-    .push(get_main_button("Play", Message::TransitionAndSetEndpoint(Input::ToGame, EndpointType::Null)))
-    .spacing(20));
+        text("Victory Condition:").size(64. * scaling).font(FONT_HANDLE),
+        button(text("<").size(64. * scaling).font(FONT_HANDLE)).on_press(Message::VictoryConditionPrev),
+        text(state.victory_condition.to_string()).size(64. * scaling).font(FONT_HANDLE),
+        button(text(">").size(64. * scaling).font(FONT_HANDLE)).on_press(Message::VictoryConditionNext),
+    ).spacing(20. * scaling))
+    .push(get_main_button("Play", Message::TransitionAndSetEndpoint(Input::ToGame, EndpointType::Offline)))
+    .spacing(20. * scaling));
     m
 }
 
@@ -247,10 +239,12 @@ pub async fn main_menu(assets: &mut Assets) -> (bool, Ui) {
         }
 
         for message in messages.drain(..) {
-            update(&mut state, message);
+            state.update(message);
         }
 
         clear_background(LIGHTGRAY);
+
+        let scaling = screen_width() / 2560.0; // Reference width for 2K (2560 pixels)
 
         let ui = match state.menu.get_state() {
             State::Main => center(column!()
@@ -267,18 +261,18 @@ pub async fn main_menu(assets: &mut Assets) -> (bool, Ui) {
                 .push(text_input(&format!("Address: {}", "127.0.0.1:8000"), &state.ip_address)
                         .size(64)
                         .font(FONT_HANDLE)
-                        .width(Length::Fixed(820.))
-                        .on_input(Message::IpAddressChanged))
+                        .width(Length::Fixed(820.* scaling))
+                        .on_input(&Message::IpAddressChanged))
                 .push(row!()
                     .push(get_main_button("Join", Message::TransitionAndSetEndpoint(Input::ToLobby, EndpointType::Client)))
                     .push(get_main_button("Host", Message::TransitionAndSetEndpoint(Input::ToLobby, EndpointType::Server)))
-                    .spacing(20)
+                    .spacing(20. * scaling)
                 )
-                .spacing(20)
+                .spacing(20. * scaling)
                 ).into(),
 
             State::Lobby => {
-                let chatlog: Vec<&ChatMsg> = state.endpoint.get_chatlog();//state.endpoint.get_chatlog();
+                let chatlog: &Vec<ChatMsg> = state.endpoint.get_chatlog();//state.endpoint.get_chatlog();
                 let chatlog_: Vec<String> = chatlog.into_iter().map(|msg| msg.to_string()).collect();
                 let slog: Vec<Text> = chatlog_.into_iter().map(|msg| Text::new(msg.clone()).into()).collect();
                 let elog = slog.into_iter().map(|t| <Text<'_, Theme, Renderer> as Into<Element<Message, Theme>>>::into(t));

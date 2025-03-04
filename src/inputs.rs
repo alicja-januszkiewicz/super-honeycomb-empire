@@ -1,6 +1,8 @@
 use crate::cubic::Cube;
 use crate::cubic::OrientationKind;
 use crate::game::Game;
+use crate::network;
+use crate::network::Client;
 use crate::write_json_message;
 use crate::Controller;
 use crate::Layout;
@@ -108,7 +110,7 @@ pub fn poll_map_editor_inputs(editor: &mut Editor, layout: &mut Layout<f32>) -> 
     exit
 }
 
-pub fn poll_inputs(game: &mut Game, layout: &mut Layout<f32>) -> bool {
+pub fn poll_inputs(game: &mut Game, client: Option<&Client>, layout: &mut Layout<f32>) -> bool {
     // if is_key_down() {
     //     let key = last_key_pressed();
     // }
@@ -123,7 +125,12 @@ pub fn poll_inputs(game: &mut Game, layout: &mut Layout<f32>) -> bool {
                 let cube = cubic::pixel_to_cube(layout, pos).round::<i32>();
                 if let Some(_) = game.world.get(&cube) {
                     match game.click(&cube) {
-                        Some(command) => {game.execute_command(&command);},
+                        Some(command) => {
+                            match client {
+                                Some(ref c) => {write_json_message(&c.stream, &Message::Command(command));                                },
+                                None => game.execute_command(&command),
+                            }
+                        },
                         None => {}
                     };
                 }
@@ -131,7 +138,10 @@ pub fn poll_inputs(game: &mut Game, layout: &mut Layout<f32>) -> bool {
         
             let player = &mut game.players[player_index];
             if is_key_pressed(KeyCode::Space) & matches!(player.controller, Controller::Human) {
-                player.skip_turn();
+                match client {
+                    Some(ref c) => {write_json_message(&c.stream, &Message::SkipTurn);},
+                    None => player.skip_turn(),
+                }
             }
         },
         None => {},
@@ -139,72 +149,20 @@ pub fn poll_inputs(game: &mut Game, layout: &mut Layout<f32>) -> bool {
 
     poll_camera_inputs(layout);
 
-    if is_key_down(KeyCode::F5) {
-        //save_map(&game.world.world, "assets/saves/quicksave.json");
-        std::fs::create_dir_all("assets/saves");
-        game.to_json("assets/saves/quicksave.json");
-    }
-    if is_key_down(KeyCode::F9) {
-        std::fs::create_dir_all("assets/saves");
-        *game = Game::from_json("assets/saves/quicksave.json");
-    }
-
-    let mut exit = false;
-    if is_key_pressed(KeyCode::Escape) {
-        exit = true
-    }
-    exit
-}
-
-pub fn poll_inputs_client(client: &mut crate::ClientApp<Game>, layout: &mut Layout<f32>) -> bool {
-    // if is_key_down() {
-    //     let key = last_key_pressed();
-    // }
-    let mut game = &mut client.app;
-
-    let player_index = game.current_player_index().unwrap(); // todo: unwrap safe here? will client never have empty players vec?
-    let player = &game.players[player_index];
-
-    if is_mouse_button_pressed(MouseButton::Left) & matches!(player.controller, Controller::Human) {
-        let pos = mouse_position().into();
-        // let xyz = Cube::from::<i32>(Cube::new(1.,1.));
-        let cube = cubic::pixel_to_cube(layout, pos).round::<i32>();
-        if let Some(_) = game.world.get(&cube) {
-            match game.click(&cube) {
-                Some(command) => {
-                    // rely on server broadcasting it back to you to execute it
-                    write_json_message(&client.stream, &Message::Command(command));
-                    // match client.send_command(command) {
-                    //     Ok(command) => {
-                    //         client.app.execute_command(&command);
-                    //     },
-                    //     Err(_) => println!("command rejected by server")
-                    // }
-                    
-                },
-                None => {}
-            };
+    match client {
+        Some(_) => {},
+        None => {
+            if is_key_down(KeyCode::F5) {
+                //save_map(&game.world.world, "assets/saves/quicksave.json");
+                std::fs::create_dir_all("assets/saves");
+                game.to_json("assets/saves/quicksave.json");
+            }
+            if is_key_down(KeyCode::F9) {
+                std::fs::create_dir_all("assets/saves");
+                *game = Game::from_json("assets/saves/quicksave.json");
+            }
         }
     }
-    let game = &mut client.app;
-
-    let player = &mut game.players[player_index];
-    if is_key_pressed(KeyCode::Space) & matches!(player.controller, Controller::Human) {
-        write_json_message(&client.stream, &Message::SkipTurn);
-        // player.skip_turn();
-    }
-
-    poll_camera_inputs(layout);
-
-    if is_key_down(KeyCode::F5) {
-        //save_map(&game.world.world, "assets/saves/quicksave.json");
-        std::fs::create_dir_all("assets/saves");
-        game.to_json("assets/saves/quicksave.json");
-    }
-    // if is_key_down(KeyCode::F9) {
-    //     std::fs::create_dir_all("assets/saves");
-    //     *game = Game::from_json("assets/saves/quicksave.json");
-    // }
 
     let mut exit = false;
     if is_key_pressed(KeyCode::Escape) {
@@ -212,6 +170,61 @@ pub fn poll_inputs_client(client: &mut crate::ClientApp<Game>, layout: &mut Layo
     }
     exit
 }
+
+// pub fn poll_inputs_client(mut game: Game, client: Client, layout: &mut Layout<f32>) -> bool {
+//     // if is_key_down() {
+//     //     let key = last_key_pressed();
+//     // }
+
+//     let player_index = game.current_player_index().unwrap(); // todo: unwrap safe here? will client never have empty players vec?
+//     let player = &game.players[player_index];
+
+//     if is_mouse_button_pressed(MouseButton::Left) & matches!(player.controller, Controller::Human) {
+//         let pos = mouse_position().into();
+//         // let xyz = Cube::from::<i32>(Cube::new(1.,1.));
+//         let cube = cubic::pixel_to_cube(layout, pos).round::<i32>();
+//         if let Some(_) = game.world.get(&cube) {
+//             match game.click(&cube) {
+//                 Some(command) => {
+//                     // rely on server broadcasting it back to you to execute it
+//                     write_json_message(&client.stream, &Message::Command(command));
+//                     // match client.send_command(command) {
+//                     //     Ok(command) => {
+//                     //         client.app.execute_command(&command);
+//                     //     },
+//                     //     Err(_) => println!("command rejected by server")
+//                     // }
+                    
+//                 },
+//                 None => {}
+//             };
+//         }
+//     }
+
+//     let player = &mut game.players[player_index];
+//     if is_key_pressed(KeyCode::Space) & matches!(player.controller, Controller::Human) {
+//         write_json_message(&client.stream, &Message::SkipTurn);
+//         // player.skip_turn();
+//     }
+
+//     poll_camera_inputs(layout);
+
+//     // if is_key_down(KeyCode::F5) {
+//     //     //save_map(&game.world.world, "assets/saves/quicksave.json");
+//     //     std::fs::create_dir_all("assets/saves");
+//     //     game.to_json("assets/saves/quicksave.json");
+//     // }
+//     // if is_key_down(KeyCode::F9) {
+//     //     std::fs::create_dir_all("assets/saves");
+//     //     *game = Game::from_json("assets/saves/quicksave.json");
+//     // }
+
+//     let mut exit = false;
+//     if is_key_pressed(KeyCode::Escape) {
+//         exit = true
+//     }
+//     exit
+// }
 
 pub fn draw_tile_selector(&layout: &Layout<f32>) {
     let vertical = match layout.orientation {

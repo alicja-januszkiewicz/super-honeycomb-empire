@@ -4,6 +4,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use strum::Display;
 
+use crate::rules::Ruleset;
 use crate::ui;
 use crate::Assets;
 use crate::Controller;
@@ -18,6 +19,7 @@ use crate::Player;
 
 use core::fmt;
 use core::panic;
+use std::any::Any;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::format;
@@ -30,79 +32,101 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 
-pub trait Endpoint {
-    fn poll(&mut self, layout: &mut Layout<f32>) -> bool;
-    fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32);
-    fn update(self: Box<Self>) -> Box<dyn Endpoint>;
-    // fn swap_app(self: Box<Self>) -> Box<dyn Endpoint>;
-    fn from_ui(self: Box<Self>, ui: ui::Endpoint, game: Game) -> Self;//Box<dyn Endpoint>;//Self where Self: Sized;
+#[derive(Debug, Clone)]
+pub enum EndpointType {
+    Offline,
+    Client,
+    Server
 }
 
-
-#[derive(Debug)]
-pub struct NullEndpoint<T: Component> {
-    pub app: T,
+pub trait Mode {
+    type Endpoint;
 }
 
-impl<T: Component> NullEndpoint<T> {
-    pub fn new(app: T) -> Self {
-        Self {app}
+// State markers with their associated data
+pub struct Offline;
+struct ClientMode;
+struct ServerMode;
+
+impl Mode for Offline {
+    type Endpoint = Offline;  // No endpoint data
+}
+
+impl Mode for ClientMode {
+    type Endpoint = Client;
+}
+
+impl Mode for ServerMode {
+    type Endpoint = Server;
+}
+
+pub struct App<M: Mode, T: Component> {
+    pub component: T,
+    pub endpoint: M::Endpoint,
+}
+
+impl<M: Mode> App<M, Game> {
+    pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Self where <M as Mode>::Endpoint: 'static {
+        let replacement: Box<dyn Chat> = Box::new(Offline);
+        let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
+        let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
+        // let endpoint = Client::new("").unwrap().into();
+        let players = std::mem::take(&mut ui.players);
+        let rules = Ruleset::from(ui);
+        let mut component = Game::new(players, rules, assets);
+        println!("init complete!");
+        Self {component, endpoint}
     }
 }
 
-impl Endpoint for NullEndpoint<Game> {
-    fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-        self.app.poll(layout)
+impl<M: Mode> App<M, Editor> {
+    pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Self where <M as Mode>::Endpoint: 'static {
+        let replacement: Box<dyn Chat> = Box::new(Offline);
+        let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
+        let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
+        // let endpoint = Client::new("").unwrap().into();
+        let players = std::mem::take(&mut ui.players);
+        let rules = Ruleset::from(ui);
+        let mut component = Editor::new(World::new(), players);
+        println!("init complete!");
+        Self {component, endpoint}
     }
-    fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
-        self.app.draw(layout, assets, time)
+}
+
+impl<M: Mode<Endpoint = M>, T: Component> App<M, T> {
+    pub fn new(component: T, endpoint: M) -> Self {
+        Self {component, endpoint}
     }
-    fn update(mut self: Box<Self>) -> Box<dyn Endpoint> {
-        self.app.update();
+    pub fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
+        self.component.draw(layout, assets, time)
+    }
+}
+
+impl App<Offline, Game> {
+    pub fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
+        self.component.poll(layout)
+    }
+    pub fn update(mut self) -> Self {
+        self.component.update();
         self
     }
-    fn from_ui(ui: ui::Endpoint, game: Game) -> Self where Self: Sized {
-        match ui {
-            Offline => Self {app: game},
-            _ => panic!(),
-        }
-    }
 }
 
-// impl<T: Component + 'static> Endpoint for Client<T> {
-//     fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-//         self.app.poll(layout)
-//     }
-//     fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
-//         self.app.draw(layout, assets, time)
-//     }
-//     fn update(&mut self) {
-//         self.app.update()
-//     }
-//     fn swap_app(self: Box<Self>) -> Box<dyn Endpoint> {
-//         let app = self.app.swap();
-//         Box::new(Server::new(app, "127.0.0.1:8080").unwrap())
-//     }
-// }
-
-impl Endpoint for ClientApp<Game> {
-    fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-        crate::poll_inputs_client(self, layout)
+impl App<ClientMode, Game> {
+    pub fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
+        crate::poll_inputs(&mut self.component, Some(&self.endpoint), layout)
     }
-    fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
-        self.app.draw(layout, assets, time)
-    }
-    fn update(mut self: Box<Self>) -> Box<dyn Endpoint> {
+    pub fn update(mut self) -> Self {
         // Force a player to skip a turn if he has no units to move or no action points left.
-        let Some(current_player_index) = self.app.current_player_index() else {return self};
-        let current_player = self.app.current_player().unwrap();
+        let Some(current_player_index) = self.component.current_player_index() else {return self};
+        let current_player = self.component.current_player().unwrap();
 
-        let can_player_issue_a_command = self.app.world.can_player_issue_a_command(&current_player_index);
+        let can_player_issue_a_command = self.component.world.can_player_issue_a_command(&current_player_index);
         if current_player.actions == 0 || !can_player_issue_a_command {
-            self.app.next_turn();
+            self.component.next_turn();
         }
 
-        match read_json_message_async(&self.stream) {
+        match read_json_message_async(&self.endpoint.stream) {
             Some(result) => {
                 match result {
                     Ok(message) => {
@@ -117,58 +141,171 @@ impl Endpoint for ClientApp<Game> {
         }
         self
     }
-    // fn swap_app(self: Box<Self>) -> Box<dyn Endpoint> {
-    //     let app = self.app.swap();
-    //     Box::new(Server::new(app, "127.0.0.1:8080").unwrap())
-    // }
-    fn from_ui(ui: ui::Endpoint, game: Game) -> Self where Self: Sized {
-        match ui {
-            ui::Endpoint::Client(c) => Self {app: game, stream: c.stream, chatlog: c.chatlog},
-            _ => panic!(),
+    fn handle_message(&mut self, message: Message) {
+        match message {
+            Message::NewPlayer { starting_position, player } => {
+                self.component.world.gen_capital_at_cube(self.component.players.len(), starting_position);
+                self.component.players.push(player);
+            },
+            Message::Initialise {..} => {},
+            Message::Command(command) => {
+                println!("executing command {:?}", command);
+                self.component.execute_command(&command);
+                // println!("clicking");
+                // self.app.click(&command.from);
+                // self.app.click(&command.to);
+            },
+            Message::RevealFog(result) => {
+                match result {
+                    Ok(mut world) => self.component.world.extend(world.drain()),
+                    Err(e) => panic!("{}", e),
+                }
+            },
+            Message::SkipTurn => {
+                self.component.current_player_mut().unwrap().skip_turn();
+            },
+            Message::Chat(msg) => {
+                self.endpoint.chatlog.push(msg);
+            },
         }
     }
 }
 
-// impl<T: Component + 'static> Endpoint for ServerApp<T> {
-//     fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-//         self.app.poll(layout)
-//     }
-//     fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
-//         self.app.draw(layout, assets, time)
-//     }
-//     fn update(&mut self) {
-//         self.app.update()
-//     }
-//     fn swap_app(self: Box<Self>) -> Box<dyn Endpoint> {
-//         let app = self.app.swap();
-//         Box::new(Server::new(app, "127.0.0.1:8080").unwrap())
-//     }
-// }
+impl App<ServerMode, Game> {
+    pub fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
+        self.component.poll(layout)
+    }
+    pub fn update(mut self) -> Self {
+        self = self.handle_client().expect("err");
+        self.component.update();
+        self.poll_current_stream();
+        self
+        // self.endpoint = self.poll_current_stream();
+    }
+    fn handle_client(mut self) -> std::io::Result<Self> {
+        for stream in self.endpoint.listener.incoming() {
+            match stream {
+                Ok(mut stream) => {
+                    // add Player to Game.players
+                    let Message::NewPlayer { player: received_player, ..} = read_json_message(&stream).unwrap() else{panic!()};
+                    let player_idx = self.component.players.len();
+                    let mut player = Player::new(&received_player.name, Controller::Remote);
+                    self.component.players.push(player);
+                    // generate a starting position for the player
+                    let cubes_with_cities = &self.component.world.get_cubes_with_cities();
+                    let starting_position = *&self.component.world.gen_random_capital(player_idx, &cubes_with_cities);
 
-impl Endpoint for ServerApp<Game> {
-    fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-        // true
-        self.app.poll(layout)
+                    // send the visible starting area to incoming client
+                    // compute the area
+                    // let fog = self.app.player_fogs.get(&player_idx).unwrap();
+                    // let observations = self.app.world.get_visible_subset(fog);
+                    // write_json_message(&stream, &observations);
+
+                    let message = Message::Initialise{turn: self.component.turn, players: self.component.players, world: self.component.world};
+                    write_json_message(&stream, &message);
+                    let Message::Initialise{players: mut p, world: w, ..} = message else {panic!()};
+                    // self.app.players = p;
+                    self.component.world = w;
+
+                    player = p.pop().unwrap();
+                    // broadcast to other players
+                    let message = Message::NewPlayer{starting_position, player};
+                    for (_, s) in &self.endpoint.streams {
+                        write_json_message(&s, &message);
+                    }
+                    let Message::NewPlayer{starting_position: _, player: pl} = message else {panic!()};
+                    p.push(pl);
+                    self.component.players = p;
+
+                    stream.set_nonblocking(true)?;
+                    //self.streams.push(stream);
+                    self.endpoint.streams.insert(player_idx, stream);
+                    println!("{} joined", received_player.name);
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // No more connections to accept right now
+                    // break to prevent from blocking
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("Failed to accept a connection: {:?}", e);
+                }
+            }
+        }
+        Ok(self)
     }
-    fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
-        self.app.draw(layout, assets, time)
-    }
-    fn update(mut self: Box<Self>) -> Box<dyn Endpoint> {
-        self = Box::new(self.handle_client().unwrap());
-        self.app.update();
-        self = Box::new(self.poll_current_stream());
-        self//Box::new(self)
-    }
-    // fn swap_app(self: Box<Self>) -> Box<dyn Endpoint> {
-    //     let app = self.app.swap();
-    //     Box::new(Server::new(app, "127.0.0.1:8080").unwrap())
-    // }
-    fn from_ui(ui: ui::Endpoint, game: Game) -> Self where Self: Sized {
-        match ui {
-            ui::Endpoint::Server(s) => Self {app: game, streams: s.streams, chatlog: s.chatlog, listener: s.listener},
-            _ => panic!(),
+
+    fn poll_current_stream(&mut self) { // -> <ServerMode as Mode>::Endpoint {
+        if self.endpoint.streams.is_empty() {
+            return //self.endpoint
+        }
+        let idx = self.component.current_player_index().unwrap();
+        // println!("listening for player index {}", idx);
+        let Some(stream) = self.endpoint.streams.get(&idx) else {return };//&self.streams[idx];
+        // println!("got stream...");
+        // let Ok(command): Result<Command, Box<dyn std::error::Error>> = read_json_message(stream) else {println!("bad command?"); return Ok(())};
+        let Some(Ok(message)): Option<Result<Message, std::io::Error>> = read_json_message_async(stream) else {return};
+        
+        println!("received message from pid {:}: {:}", idx, message);
+
+        match message {
+            Message::Command(command) => {
+                self.handle_command(command);
+            },
+            Message::SkipTurn => {
+                self.component.current_player_mut().unwrap().skip_turn();
+
+                for (_, s) in self.endpoint.streams.iter() {
+                    write_json_message(s, &Message::SkipTurn);
+                };
+                // self.endpoint
+            },
+            Message::Chat(msg) => {
+                self.endpoint.chatlog.push(msg.clone());
+                write_json_message(stream, &Message::Chat(msg));
+                // self.endpoint
+            },
+            _ => {}//{self.endpoint},
         }
     }
+    fn handle_command(&mut self, command: Command) {//-> <ServerMode as Mode>::Endpoint {
+        let idx = self.component.current_player_index().unwrap();
+        let Some(stream) = self.endpoint.streams.get(&idx) else {return};
+
+        // play out the command step-by-step
+        // at each step, check which players can observe the command (before executing the step)
+        // for each player that observes the command, truncate the command up to where they stop observing
+        // after the command has finished playing out, relay the potentially truncated command to all players that have observed some part of it
+        // rn there are no steps, so the process is simplified. unit's position is leaked if a unit moves out of or into view, but this might eventually be represented (drawn), or the commands will be reworked to involve steps.
+
+        // do not broadcast the same move to its sender
+        // let mut n: Vec<usize> = (0..self.app.players.len()).collect();
+        // n.remove(idx);
+        let n = 0..self.component.players.len(); //.into_iter()
+
+        let views = std::mem::take(&mut self.component.player_views);
+        let observations = n.map(|i| views.get(&i)).map(|maybe_view| command.get_observed_sections(maybe_view));
+        // execute the move
+        self.component.execute_command(&command);
+
+        // tell client move was ok
+        // let message = Message::RevealFog(Ok::<World, ServerResponseError>(World::new()));
+        // write_json_message(stream, &message);
+
+        // send the observations to clients
+        observations.enumerate().for_each(|(idx, obs)| {
+            obs.into_iter().for_each(|command| {
+                println!("sending {:?} to {}", command, idx);
+                write_json_message(self.endpoint.streams.get(&idx).unwrap(), &Message::Command(command));
+            });
+        });
+        self.component.player_views = views;
+        // self.endpoint
+    }
+}
+
+impl<M: Mode> App<M, Editor> {
+    pub fn update(mut self) {}
 }
 
 #[derive(Debug)]
@@ -177,32 +314,67 @@ pub struct Client {
     pub chatlog: Vec<ChatMsg>,
 }
 
-#[derive(Debug)]
-pub struct ClientApp<T: Component> {
-    pub app: T,
-    pub stream: TcpStream,
-    chatlog: Vec<ChatMsg>,
+pub trait GetChat {
+    fn get_chatlog(&self) -> &Vec<ChatMsg>;
 }
 
-pub trait ChatClient {
-    // fn chatlog_mut(&mut self) -> &mut Vec<ChatMsg>;
-    fn stream(&self) -> &TcpStream;
+impl GetChat for Offline {
+    fn get_chatlog(&self) -> &Vec<ChatMsg> {
+        panic!("not implemented")
+    }
+}
+
+impl GetChat for Client {
+    fn get_chatlog(&self) -> &Vec<ChatMsg> {
+        &self.chatlog
+    }
+}
+
+impl GetChat for Server {
+    fn get_chatlog(&self) -> &Vec<ChatMsg> {
+        &self.chatlog
+    }
+}
+
+pub trait SendChat {
+    fn send_chat_message(&mut self, msg: String) -> Result<(), Box<dyn std::error::Error>>;
+}
+
+impl SendChat for Offline {
     fn send_chat_message(&mut self, msg: String) -> Result<(), Box<dyn std::error::Error>> {
-        let message = Message::Chat(ChatMsg::from_str(&msg));
-        write_json_message(&self.stream(), &message)
+        panic!("not implemented")
     }
 }
 
-impl ChatClient for Client {
-    fn stream(&self) -> &TcpStream {
-        &self.stream
+impl SendChat for Client {
+    fn send_chat_message(&mut self, msg: String) -> Result<(), Box<dyn std::error::Error>> {
+        let message: Message = Message::Chat(ChatMsg::from_str(&msg));
+        write_json_message(&self.stream, &message)
     }
 }
 
-impl<T: Component> ChatClient for ClientApp<T> {
-    fn stream(&self) -> &TcpStream {
-        &self.stream
+pub trait Chat: SendChat + GetChat {
+    fn as_any(&self) -> &dyn Any;
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+}
+
+impl Chat for Offline {
+    fn as_any(&self) -> &dyn Any {
+        self
     }
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
+}
+impl Chat for Client {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
+}
+impl Chat for Server {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
 }
 
 impl Client {
@@ -282,31 +454,27 @@ impl Command {
 //     }
 // }
 
-impl ClientApp<Game> {
-    pub fn new<A: std::net::ToSocketAddrs + core::fmt::Display>(mut app: Game, addr: A) -> Result<Self, std::io::Error> {
-        println!("Connecting to {}...", addr);
-        let stream = TcpStream::connect(addr)?;
-        println!("TCP connection established...");
+impl App<ClientMode, Game> {
+    pub fn new<A: std::net::ToSocketAddrs + core::fmt::Display>(mut game: Game, addr: A) -> Result<Self, std::io::Error> {
+        let client = Client::new(addr)?;
 
         let n = random::<usize>() % 100;
         let player = Player::new(&format!("Player {}", n), Controller::Human);
         let message = Message::NewPlayer{starting_position: Cube::new(0, 0), player};
-        write_json_message(&stream, &message).unwrap();
+        write_json_message(&client.stream, &message).unwrap();
         println!("Player sent...");
         // TODO: This will leak player.selection - perhaps censor the field before sending it here?
-        let Message::Initialise { turn, players, world } = read_json_message(&stream).unwrap() else {panic!()};
-        app.players = players;
-        let my_idx = app.players.len() - 1;
-        app.players[my_idx].controller = Controller::Human;
-        app.world = world;
-        app.turn = turn;
+        let Message::Initialise { turn, players, world } = read_json_message(&client.stream).unwrap() else {panic!()};
+        game.players = players;
+        let my_idx = game.players.len() - 1;
+        game.players[my_idx].controller = Controller::Human;
+        game.world = world;
+        game.turn = turn;
         println!("Game state received...");
 
-        stream.set_nonblocking(true)?;
-        let chatlog = vec!();
-        Ok(Self{app, stream, chatlog})
+        Ok(Self{component: game, endpoint: client})
 
-        //Ok(Self{player: Player::new("default", None), app, stream})
+        //Ok(Self{player: Player::new("default", None), component, stream})
         // if let Ok(stream) = TcpStream::connect(addr) {
         //     println!("Connected to the server!");
         // } else {
@@ -327,22 +495,22 @@ impl core::fmt::Display for ServerResponseError {
 impl std::error::Error for ServerResponseError {}
 
 
-impl ClientApp<Game> {
+impl App<ClientMode, Game> {
     pub fn send_command(&mut self, command: Command) -> Result<Command, std::io::Error>{
         let message = Message::Command(command);
-        write_json_message(&self.stream, &message);
+        write_json_message(&self.endpoint.stream, &message);
         let Message::Command(command) = message else {panic!()};
-        let Message::RevealFog(result) = read_json_message(&self.stream).unwrap() else {panic!()};
+        let Message::RevealFog(result) = read_json_message(&self.endpoint.stream).unwrap() else {panic!()};
         match result {
-            Ok(mut world) => self.app.world.extend(world.drain()),
+            Ok(mut world) => self.component.world.extend(world.drain()),
             Err(e) => panic!("{}", e),
         }
         Ok(command)
     }
     pub fn listen_for_player_joins(&mut self) {
-        let Some(Ok(Message::NewPlayer { starting_position, player })) = read_json_message_async(&self.stream) else {return};
-        self.app.world.gen_capital_at_cube(self.app.players.len(), starting_position);
-        self.app.players.push(player);
+        let Some(Ok(Message::NewPlayer { starting_position, player })) = read_json_message_async(&self.endpoint.stream) else {return};
+        self.component.world.gen_capital_at_cube(self.component.players.len(), starting_position);
+        self.component.players.push(player);
     }
 }
 
@@ -357,7 +525,7 @@ pub trait Component {
     fn poll(&mut self, layout: &mut Layout<f32>) -> bool;
     fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32);
     fn update(&mut self);
-    fn swap(self) -> impl Component;
+    fn swap(self) -> Box<dyn Component>;//impl Component;
     // fn empty() -> Self;
 }
 
@@ -367,36 +535,16 @@ pub struct Server {
     pub chatlog: Vec<ChatMsg>,
 }
 
-#[derive(Debug)]
-pub struct ServerApp<T: Component> {
-    // game: Game,
-    pub app: T,
-    listener: TcpListener,
-    streams: HashMap<usize, TcpStream>, // some players may not have a stream
-    chatlog: Vec<ChatMsg>,
-}
-
-pub trait ChatServer {
-    fn chatlog_mut(&mut self) -> &mut Vec<ChatMsg>;
-    fn streams(&self) -> &HashMap<usize, TcpStream>;
+impl SendChat for Server {
     fn send_chat_message(&mut self, msg: String) -> Result<(), Box<dyn std::error::Error>> {
         let author = "Server".to_string();
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let message = ChatMsg {body: msg, author, timestamp};
-        for (_, s) in self.streams().iter() {
+        for (_, s) in self.streams.iter() {
             write_json_message(s, &Message::Chat(message.clone()));
         };
-        self.chatlog_mut().push(message);
+        self.chatlog.push(message);
         Ok(()) // todo: handle one or more errors
-    }
-}
-
-impl ChatServer for Server {
-    fn chatlog_mut(&mut self) -> &mut Vec<ChatMsg> {
-        &mut self.chatlog
-    }
-    fn streams(&self) -> &HashMap<usize, TcpStream> {
-        &self.streams
     }
 }
 
@@ -409,139 +557,6 @@ impl Server {
         Ok(Self{listener, streams, chatlog})
         // let listeners: Result<Vec<_>, _> = addrs.iter().map(|a| {std::net::TcpListener::bind(a)}).collect();
         // Ok(Self{game, listeners: listeners?})
-    }
-}
-
-impl<T: Component> ServerApp<T> {
-    pub fn new<A: std::net::ToSocketAddrs>(app: T, addr: A) -> Result<ServerApp<T>, std::io::Error>{
-        let listener = std::net::TcpListener::bind(addr)?;
-        listener.set_nonblocking(true)?;
-        let streams = HashMap::new();
-        let chatlog = vec!();
-        Ok(Self{app, listener, streams, chatlog})
-        // let listeners: Result<Vec<_>, _> = addrs.iter().map(|a| {std::net::TcpListener::bind(a)}).collect();
-        // Ok(Self{game, listeners: listeners?})
-    }
-}
-
-impl ServerApp<Game> {
-    fn handle_client(mut self) -> std::io::Result<Self> {
-        for stream in self.listener.incoming() {
-            match stream {
-                Ok(mut stream) => {
-                    // add Player to Game.players
-                    let Message::NewPlayer { player: received_player, ..} = read_json_message(&stream).unwrap() else{panic!()};
-                    let player_idx = self.app.players.len();
-                    let mut player = Player::new(&received_player.name, Controller::Remote);
-                    self.app.players.push(player);
-                    // generate a starting position for the player
-                    let cubes_with_cities = &self.app.world.get_cubes_with_cities();
-                    let starting_position = *&self.app.world.gen_random_capital(player_idx, &cubes_with_cities);
-
-                    // send the visible starting area to incoming client
-                    // compute the area
-                    // let fog = self.app.player_fogs.get(&player_idx).unwrap();
-                    // let observations = self.app.world.get_visible_subset(fog);
-                    // write_json_message(&stream, &observations);
-
-                    let message = Message::Initialise{turn: self.app.turn, players: self.app.players, world: self.app.world};
-                    write_json_message(&stream, &message);
-                    let Message::Initialise{players: mut p, world: w, ..} = message else {panic!()};
-                    // self.app.players = p;
-                    self.app.world = w;
-
-                    player = p.pop().unwrap();
-                    // broadcast to other players
-                    let message = Message::NewPlayer{starting_position, player};
-                    for (_, s) in &self.streams {
-                        write_json_message(&s, &message);
-                    }
-                    let Message::NewPlayer{starting_position: _, player: pl} = message else {panic!()};
-                    p.push(pl);
-                    self.app.players = p;
-
-                    stream.set_nonblocking(true)?;
-                    //self.streams.push(stream);
-                    self.streams.insert(player_idx, stream);
-                    println!("{} joined", received_player.name);
-                }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    // No more connections to accept right now
-                    // break to prevent from blocking
-                    break;
-                }
-                Err(e) => {
-                    eprintln!("Failed to accept a connection: {:?}", e);
-                }
-            }
-        }
-        Ok(self)
-    }
-
-    fn poll_current_stream(mut self) -> Self {
-        if self.streams.is_empty() {
-            return self
-        }
-        let idx = self.app.current_player_index().unwrap();
-        // println!("listening for player index {}", idx);
-        let Some(stream) = self.streams.get(&idx) else {return self};//&self.streams[idx];
-        // println!("got stream...");
-        // let Ok(command): Result<Command, Box<dyn std::error::Error>> = read_json_message(stream) else {println!("bad command?"); return Ok(())};
-        let Some(Ok(message)): Option<Result<Message, std::io::Error>> = read_json_message_async(stream) else {return self};
-        
-        match message {
-            Message::Command(command) => {
-                self.handle_command(command)
-            },
-            Message::SkipTurn => {
-                self.app.current_player_mut().unwrap().skip_turn();
-
-                for (_, s) in self.streams.iter() {
-                    write_json_message(s, &Message::SkipTurn);
-                };
-                self
-            },
-            Message::Chat(msg) => {
-                self.chatlog.push(msg.clone());
-                write_json_message(stream, &Message::Chat(msg));
-                self
-            },
-            _ => {self},
-        }
-    }
-    fn handle_command(mut self, command: Command) -> Self {
-        let idx = self.app.current_player_index().unwrap();
-        let Some(stream) = self.streams.get(&idx) else {return self};
-
-        // play out the command step-by-step
-        // at each step, check which players can observe the command (before executing the step)
-        // for each player that observes the command, truncate the command up to where they stop observing
-        // after the command has finished playing out, relay the potentially truncated command to all players that have observed some part of it
-        // rn there are no steps, so the process is simplified. unit's position is leaked if a unit moves out of or into view, but this might eventually be represented (drawn), or the commands will be reworked to involve steps.
-
-        // do not broadcast the same move to its sender
-        // let mut n: Vec<usize> = (0..self.app.players.len()).collect();
-        // n.remove(idx);
-        let n = 0..self.app.players.len(); //.into_iter()
-
-        let views = std::mem::take(&mut self.app.player_views);
-        let observations = n.map(|i| views.get(&i)).map(|maybe_view| command.get_observed_sections(maybe_view));
-        // execute the move
-        self.app.execute_command(&command);
-
-        // tell client move was ok
-        // let message = Message::RevealFog(Ok::<World, ServerResponseError>(World::new()));
-        // write_json_message(stream, &message);
-
-        // send the observations to clients
-        observations.enumerate().for_each(|(idx, obs)| {
-            obs.into_iter().for_each(|command| {
-                println!("sending {:?} to {}", command, idx);
-                write_json_message(self.streams.get(&idx).unwrap(), &Message::Command(command));
-            });
-        });
-        self.app.player_views = views;
-        self
     }
 }
 
@@ -638,6 +653,7 @@ pub fn write_json_message(stream: &TcpStream, message: &Message) -> Result<(), B
     writer.write_all(b"\n")?;
     writer.flush()?;
 
+    println!("sent {}", message);
     Ok(())
 }
 
@@ -651,23 +667,6 @@ pub fn write_json_message(stream: &TcpStream, message: &Message) -> Result<(), B
 //     writer.flush()?;
 
 //     Ok(message)
-// }
-
-// #[derive(Serialize, Deserialize)]
-// enum Message {
-//     NewPlayer{
-//         starting_position: Cube<i32>, 
-//         player: Player
-//     },
-//     Initialise{
-//         players: Vec<Player>,
-//         world: World
-//     },
-//     RevealFog(World),
-//     Command(Command),
-//     Result(Result<(), ServerResponseError>),
-//     SkipTurn,
-//     Chat(usize, String)
 // }
 
 // performing an action on the client side sends over a Command or a SkipTurn
@@ -692,37 +691,6 @@ impl core::fmt::Display for Message {
             Message::RevealFog(_) => write!(f, "RevealFog"),
             Message::SkipTurn => write!(f, "SkipTurn"),
             Message::Chat{..} => write!(f, "Chat"),
-        }
-    }
-}
-
-impl ClientApp<Game> {
-    fn handle_message(&mut self, message: Message) {
-        match message {
-            Message::NewPlayer { starting_position, player } => {
-                self.app.world.gen_capital_at_cube(self.app.players.len(), starting_position);
-                self.app.players.push(player);
-            },
-            Message::Initialise {..} => {},
-            Message::Command(command) => {
-                println!("executing command {:?}", command);
-                self.app.execute_command(&command);
-                // println!("clicking");
-                // self.app.click(&command.from);
-                // self.app.click(&command.to);
-            },
-            Message::RevealFog(result) => {
-                match result {
-                    Ok(mut world) => self.app.world.extend(world.drain()),
-                    Err(e) => panic!("{}", e),
-                }
-            },
-            Message::SkipTurn => {
-                self.app.current_player_mut().unwrap().skip_turn();
-            },
-            Message::Chat(msg) => {
-                self.chatlog.push(msg);
-            },
         }
     }
 }
