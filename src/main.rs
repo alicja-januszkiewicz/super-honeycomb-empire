@@ -264,8 +264,17 @@ async fn main() {
 
     if exit {return};
 
-    let mut app = App::<Offline, Game>::from_ui(ui, &mut assets);
-    // let app: Box<dyn Component> = Box::new(a);
+    // let mut app = App::<Offline, Game>::from_ui(ui, &mut assets);
+
+    // let mut app: Box<App<Offline, Game>>= Box::new(App::<Offline, Game>::from_ui(ui, &mut assets));
+    // let swapped_app: Box<App<Offline, Editor>>= app.swap_component();
+
+    // let swapped_app: Box<App<Offline, <Game as Component>::Swap>> = app.swap_component();
+    // let app: Box<dyn Component> = Box::new(App::<Offline, Game>::from_ui(ui, &mut assets));
+
+    // let mut app: Box<dyn Component> = Box::new(App::<Offline, Game>::from_ui(ui, &mut assets));
+    let mut app = App::from_ui(ui, &mut assets);
+
 
     // let args = Cli::parse();
     // match args.mode {
@@ -307,10 +316,10 @@ async fn main() {
         exit = app.poll(&mut layout);
         app.draw(&mut layout, &mut assets, time);
         next_frame().await;
-        app = app.update();
-        // if is_key_pressed(KeyCode::F1) {
-        //     app = app.swap_app();
-        // }
+        app.update();
+        if is_key_pressed(KeyCode::F1) {
+            app = app.swap();
+        }
         time += get_frame_time();
     }
 

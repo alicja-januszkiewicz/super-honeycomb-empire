@@ -39,7 +39,7 @@ hashbrown = "0.14.5"
 # iced = "0.13.1"
 # glow = "0.16.0"
 # iced_glow = "0.8.0"
-iced_macroquad = { git = "https://github.com/B0ney/iced_macroquad/", version = "0.1.0" }
+iced_macroquad = { git = "https://github.com/B0ney/iced_macroquad/", version = "0.1.0", features=["image"] }
 chrono = "0.4.39"
 
 [workspace]

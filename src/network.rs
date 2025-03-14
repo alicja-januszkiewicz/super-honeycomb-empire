@@ -60,38 +60,84 @@ impl Mode for ServerMode {
     type Endpoint = Server;
 }
 
+trait NotOffline {}
+
+impl NotOffline for ClientMode {}
+impl NotOffline for ServerMode {}
+
 pub struct App<M: Mode, T: Component> {
     pub component: T,
     pub endpoint: M::Endpoint,
 }
 
-impl<M: Mode> App<M, Game> {
-    pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Self where <M as Mode>::Endpoint: 'static {
+impl<M: Mode + 'static> App<M, Game>
+where 
+    M: NotOffline, 
+    Game: Component, 
+    <M as Mode>::Endpoint: 'static,
+    App<M, Game>: Component,
+{
+    pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Box<dyn Component> {
         let replacement: Box<dyn Chat> = Box::new(Offline);
+        // let endpoint = Client::new("").unwrap().into();
         let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
         let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
-        // let endpoint = Client::new("").unwrap().into();
+
         let players = std::mem::take(&mut ui.players);
         let rules = Ruleset::from(ui);
         let mut component = Game::new(players, rules, assets);
+
+        let app = Box::new( Self {component, endpoint} );
+        
         println!("init complete!");
-        Self {component, endpoint}
+        app
     }
 }
 
-impl<M: Mode> App<M, Editor> {
-    pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Self where <M as Mode>::Endpoint: 'static {
-        let replacement: Box<dyn Chat> = Box::new(Offline);
-        let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
-        let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
-        // let endpoint = Client::new("").unwrap().into();
+impl App<Offline, Game>
+where 
+    Game: Component, 
+{
+    pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Box<dyn Component> {
         let players = std::mem::take(&mut ui.players);
-        let rules = Ruleset::from(ui);
-        let mut component = Editor::new(World::new(), players);
+        let rules = Ruleset::default(ui.victory_condition, &ui.players);
+        let mut component = Game::new(players, rules, assets);
+
+        let app= Box::new(component);
+
         println!("init complete!");
-        Self {component, endpoint}
+        app
     }
 }
+
+
+// impl<M: Mode> App<M, Game> {
+//     pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Self where <M as Mode>::Endpoint: 'static {
+//         let replacement: Box<dyn Chat> = Box::new(Offline);
+//         let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
+//         let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
+//         // let endpoint = Client::new("").unwrap().into();
+//         let players = std::mem::take(&mut ui.players);
+//         let rules = Ruleset::from(ui);
+//         let mut component = Game::new(players, rules, assets);
+//         println!("init complete!");
+//         Self {component, endpoint}
+//     }
+// }
+
+// impl<M: Mode> App<M, Editor> {
+//     pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Self where <M as Mode>::Endpoint: 'static {
+//         let replacement: Box<dyn Chat> = Box::new(Offline);
+//         let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
+//         let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
+//         // let endpoint = Client::new("").unwrap().into();
+//         let players = std::mem::take(&mut ui.players);
+//         let rules = Ruleset::from(ui);
+//         let mut component = Editor::new(World::new(), players);
+//         println!("init complete!");
+//         Self {component, endpoint}
+//     }
+// }
 
 impl<M: Mode<Endpoint = M>, T: Component> App<M, T> {
     pub fn new(component: T, endpoint: M) -> Self {
@@ -102,15 +148,87 @@ impl<M: Mode<Endpoint = M>, T: Component> App<M, T> {
     }
 }
 
-impl App<Offline, Game> {
-    pub fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-        self.component.poll(layout)
-    }
-    pub fn update(mut self) -> Self {
-        self.component.update();
-        self
-    }
-}
+// impl<T: Component<Swap = U>, U: Component> App<Offline, T> {
+//     pub fn swap_component(self) -> Box<App<Offline, U>> {
+//         let component = self.component.swap();
+//         let endpoint = self.endpoint;
+//         Box::new(App::<Offline, U> {component, endpoint})
+//     }
+// }
+
+// impl App<Offline, Game> {
+//     pub fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
+//         self.component.poll(layout)
+//     }
+//     pub fn update(mut self) -> Self {
+//         self.component.update();
+//         self
+//     }
+// }
+// impl<T: Component<Swap = U>, U: Component> Component for App<Offline, T> {
+// impl Component for App<Offline, Game> {
+//     fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
+//         self.component.poll(layout)
+//     }
+//     fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
+//         self.component.draw(layout, assets, time)
+//     }
+//     fn update(&mut self) {
+//         self.component.update();
+//     }
+//     fn swap(self: Box<Self>) -> Box<dyn Component> {
+//         let component = Box::new(self.component)
+//             .swap()
+//             .into_any()
+//             .downcast::<Editor>()
+//             .unwrap();
+        
+//         let endpoint = self.endpoint;
+    
+//         Box::new(App::<Offline, Editor> { component: *component, endpoint })
+//     }
+// }
+
+// impl Component for App<Offline, Editor> {
+//     fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
+//         self.component.poll(layout)
+//     }
+//     fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
+//         self.component.draw(layout, assets, time)
+//     }
+//     fn update(&mut self) {
+//         self.component.update();
+//     }
+//     fn swap(self: Box<Self>) -> Box<dyn Component> {
+//         let component = Box::new(self.component)
+//             .swap()
+//             .into_any()
+//             .downcast::<Game>()
+//             .unwrap();
+        
+//         let endpoint = self.endpoint;
+    
+//         Box::new(App::<Offline, Game> { component: *component, endpoint })
+//     }
+// }
+
+// impl Component for App<Offline, Editor> {
+//     type Swap = App<Offline, Editor>;
+//     fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
+//         self.component.poll(layout)
+//     }
+//     fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
+//         self.component.draw(layout, assets, time)
+//     }
+//     fn update(&mut self) {
+//         self.component.update();
+//     }
+//     fn swap(self) -> App<Offline, Editor> {
+//         let component = self.component.swap();
+//         let endpoint = self.endpoint;
+//         App::<Offline, Editor> {component, endpoint}
+//     }
+// }
 
 impl App<ClientMode, Game> {
     pub fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
@@ -167,6 +285,7 @@ impl App<ClientMode, Game> {
             Message::Chat(msg) => {
                 self.endpoint.chatlog.push(msg);
             },
+            _ => {},
         }
     }
 }
@@ -353,7 +472,88 @@ impl SendChat for Client {
     }
 }
 
-pub trait Chat: SendChat + GetChat {
+pub trait Endpoint {
+    fn update(&mut self);
+    fn close(self: Box<Self>);
+}
+
+impl Endpoint for Server {
+    fn update(&mut self) {
+        self.handle_client().expect("err");
+        self.poll_all_streams();
+    }
+    fn close(self: Box<Self>) {
+        
+    }
+}
+
+impl Endpoint for Client {
+    fn update(&mut self) {
+        self.update();
+    }
+    fn close(self: Box<Self>) {
+        
+    }
+}
+
+impl Endpoint for Offline {
+    fn update(&mut self) {
+
+    }
+    fn close(self: Box<Self>) {
+        
+    }
+}
+
+pub trait AsAny {
+    fn as_any(&self) -> &dyn Any;
+}
+pub trait IntoAny {
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+}
+
+impl AsAny for Game {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl IntoAny for Game {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
+}
+
+impl AsAny for Editor {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl IntoAny for Editor {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
+}
+
+// impl<M: Mode, T: Component> AsAny for App<M, T> {
+impl AsAny for App<Offline, Game> {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl IntoAny for App<Offline, Game> {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
+}
+
+impl AsAny for App<Offline, Editor> {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl IntoAny for App<Offline, Editor> {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
+}
+
+pub trait Chat: SendChat + GetChat + Endpoint {
     fn as_any(&self) -> &dyn Any;
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
@@ -400,6 +600,25 @@ impl Client {
         //     println!("Couldn't connect to server...");
         // }
     }
+    fn update(&mut self) {
+        match read_json_message_async(&self.stream) {
+            Some(result) => {
+                match result {
+                    Ok(message) => {
+                        match message {
+                            Message::Chat(msg) => self.chatlog.push(msg),
+                            _ => {},
+                        }
+                    },
+                    Err(e) => {
+                        panic!("{}", e);
+                    }
+                }
+            }
+            None => {},
+        }
+    }
+
 }
 
 impl Command {
@@ -521,11 +740,13 @@ impl App<ClientMode, Game> {
 //     fn update(&mut self);
 //     fn swap(self) -> Self::Swap; //impl Component;
 // }
-pub trait Component {
+pub trait Component: IntoAny {
+    // type Swap: Component;
     fn poll(&mut self, layout: &mut Layout<f32>) -> bool;
     fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32);
     fn update(&mut self);
-    fn swap(self) -> Box<dyn Component>;//impl Component;
+    // fn swap(self) -> Self::Swap; //Box<dyn Component>;//impl Component;
+    fn swap(self: Box<Self>) -> Box<dyn Component>;//Box<dyn Component>;//impl Component;
     // fn empty() -> Self;
 }
 
@@ -533,6 +754,49 @@ pub struct Server {
     listener: TcpListener,
     streams: HashMap<usize, TcpStream>, // some players may not have a stream
     pub chatlog: Vec<ChatMsg>,
+}
+
+impl Server {
+    fn handle_client(&mut self) -> std::io::Result<()> {
+        for stream in self.listener.incoming() {
+            match stream {
+                Ok(mut stream) => {
+                    let player_idx = self.streams.len();
+                    stream.set_nonblocking(true)?;
+                    self.streams.insert(player_idx, stream);
+                    println!("player {} joined", player_idx);
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // No more connections to accept right now
+                    // break to prevent from blocking
+                    break;
+                }
+                Err(e) => {
+                    eprintln!("Failed to accept a connection: {:?}", e);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn poll_all_streams(&mut self) {
+        for (idx, stream) in self.streams.iter() {
+            // println!("listening for player index {}", idx);
+            let Some(Ok(message)): Option<Result<Message, std::io::Error>> = read_json_message_async(stream) else {return};
+        
+            println!("received message from pid {:}: {:}", idx, message);
+    
+            match message {
+                Message::Chat(mut msg) => {
+                    msg.author = format!("Player {:}", idx);
+                    msg.timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                    self.chatlog.push(msg.clone());
+                    write_json_message(stream, &Message::Chat(msg));
+                },
+                _ => {}
+            }
+        }
+    }
 }
 
 impl SendChat for Server {
@@ -674,7 +938,8 @@ pub fn write_json_message(stream: &TcpStream, message: &Message) -> Result<(), B
 // and only then executes it.
 #[derive(Serialize, Deserialize)]
 pub enum Message {
-    NewPlayer {starting_position: Cube<i32>, player: Player},
+    SetPlayer(Player),
+    NewPlayer {starting_position: Cube<i32>, player: Player}, // todo: remove
     Initialise {turn: usize, players: Vec<Player>, world: World},
     Command(Command),
     RevealFog(Result<World, ServerResponseError>),
@@ -685,6 +950,7 @@ pub enum Message {
 impl core::fmt::Display for Message {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
+            Message::SetPlayer{..} => write!(f, "SetPlayer"),
             Message::NewPlayer{..} => write!(f, "NewPlayer"),
             Message::Initialise{..} => write!(f, "Initialise"),
             Message::Command(_) => write!(f, "Command"),
@@ -751,7 +1017,8 @@ pub struct ChatMsg {
 
 impl fmt::Display for ChatMsg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}: {}", self.timestamp, self.author, self.body)
+        let time = &self.timestamp[11..]; // skip date part
+        write!(f, "[{}] {}: {}", time, self.author, self.body)
     }
 }
 

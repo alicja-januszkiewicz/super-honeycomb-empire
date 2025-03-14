@@ -19,6 +19,8 @@ use serde::Serialize;
 use strum::{EnumIter, Display};
 
 use crate::cubic::*;
+use crate::network::AsAny;
+use crate::network::IntoAny;
 use crate::rules::Ruleset;
 use crate::ui::Ui;
 use crate::Army;
@@ -310,9 +312,12 @@ impl crate::Component for Game {
     // fn swap(self) -> Self::Swap{//impl Component {
     //     crate::Editor::from(self)
     // }
-    fn swap(self) -> Box<dyn Component> {
-        Box::new(crate::Editor::from(self))
+    fn swap(self: Box<Self>) -> Box<dyn Component> {
+        Box::new(crate::Editor::from(*self))
     }
+    // fn swap(self) -> impl Component + IntoAny {
+    //     crate::Editor::from(self)
+    // }
     fn update(&mut self) {
         self._update()
     }

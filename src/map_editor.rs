@@ -1,4 +1,4 @@
-use crate::{cubic::{self, Layout}, game::VictoryCondition, inputs::{draw_tile_selector, poll_inputs, poll_map_editor_inputs}, mquad::*, rules::Ruleset, world::{Locality, Player, TileCategory}, Component, Fog, VisibilityMask};
+use crate::{cubic::{self, Layout}, game::VictoryCondition, inputs::{draw_tile_selector, poll_inputs, poll_map_editor_inputs}, mquad::*, network::{AsAny, IntoAny}, rules::Ruleset, world::{Locality, Player, TileCategory}, Component, Fog, VisibilityMask};
 
 use std::{collections::{HashMap, HashSet}, fs::{OpenOptions, File}};
 use std::slice::Iter;
@@ -205,12 +205,15 @@ impl crate::Component for Editor {
     fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
         crate::poll_map_editor_inputs(self, layout)
     }
-    // fn swap(self) -> Self::Swap{//impl Component {
+    // fn swap(self) -> Self::Swap{
     //     crate::Game::from(self)
     // }
-    fn swap(self) -> Box<dyn Component> {//impl Component {
-        Box::new(crate::Game::from(self))
+    fn swap(self: Box<Self>) -> Box<dyn Component> {
+        Box::new(crate::Game::from(*self))
     }
+    // fn swap(self) -> impl Component + IntoAny {
+    //     crate::Game::from(self)
+    // }
     fn update(&mut self) {
         {}
     }
