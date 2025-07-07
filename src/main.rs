@@ -215,12 +215,12 @@ fn new_game(rules: Ruleset, assets: &mut Assets) -> Game {
     // let players = vec![player1, player2, player3, player4];
     // let players = vec![player1, player2, ];//player3, player4];
 
-    // let world = World::new();
+    let world = World::new();
     // // save_map(&game.world.world);
     // // let mut world = World::from_json("assets/maps/map.json");
     // // let mut world = World::from_json("assets/saves/quicksave.json");
 
-    Game::new(players, rules, assets)
+    Game::new(players, world, rules, assets)
 }
 
 // async fn game_loop(game: &mut Game, layout: &mut Layout<f32>, assets: &Assets) {

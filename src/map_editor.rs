@@ -155,7 +155,7 @@ impl Editor {
         let max = match self.brush.layer {
             BrushLayer::Tile => TileCategory::iter().len(),
             BrushLayer::Locality => LocalityCategory::iter().len(),
-            BrushLayer::Owner => self.players.iter().len(),
+            BrushLayer::Owner => self.players.iter().len(), // +1 for some new player
         };
         self.brush.idx %= max + 1;
     }

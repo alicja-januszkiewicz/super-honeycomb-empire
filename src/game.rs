@@ -16,6 +16,7 @@ use std::fmt::Result;
 
 use serde::Deserialize;
 use serde::Serialize;
+use strum::EnumString;
 use strum::{EnumIter, Display};
 
 use crate::cubic::*;
@@ -38,7 +39,7 @@ use crate::world::Command;
 use crate::world::TileCategory;
 use crate::world::gen::*;
 
-#[derive(Serialize, Deserialize, EnumIter, Display, PartialEq, Default)]
+#[derive(Serialize, Deserialize, EnumIter, strum::AsStaticStr, Display, PartialEq, Default)]
 pub enum VictoryCondition {
     #[default]
     Elimination,
@@ -102,8 +103,8 @@ impl Game {
             }
         }
     }
-    pub fn new(players: Vec<Player>, rules: Ruleset, assets: &mut Assets) -> Self {
-        let world: World = World::new();
+    pub fn new(players: Vec<Player>, world: World, rules: Ruleset, assets: &mut Assets) -> Self {
+        // let world: World = World::new();
         let player_views = HashMap::new();
 
         let mut game = Self {
@@ -114,7 +115,7 @@ impl Game {
             rules,
         };
     
-        Game::init_world(&mut game, assets);
+        // Game::init_world(&mut game, assets);
         game.init_views();
         // Game::init_views(&mut game);
         game
@@ -177,9 +178,8 @@ impl Game {
         let river_gen = RiverGen::Custom(assets.river.clone());
         // let river_gen = RiverGen::Random(300, 0.3);
         let localities_gen = LocalitiesGen::Random;
-        let capitals_gen = CapitalsGen::Random;
+        let capitals_gen = CapitalsGen::Random(4);
         game.world.generate(
-            &mut game.players,
             shape_gen,
             river_gen,
             localities_gen,

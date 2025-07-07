@@ -51,14 +51,14 @@ pub struct Command {
     pub via: Vec<Cube<i32>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 pub enum Controller {
     Human,
     AI(AI),
     Remote,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 pub struct Player {
     pub name: String,
     pub actions: i32,

@@ -394,6 +394,48 @@ pub fn draw_editor(editor: &Editor, layout: &Layout<f32>, assets: &Assets, time:
     draw_all_locality_names(&editor.world, &layout, &assets);
 }
 
+/// Returns (min_x, min_y, max_x, max_y) of all tiles in screen space
+pub fn map_bounds(world: &World, layout: &Layout<f32>) -> (f32, f32, f32, f32) {
+    let mut min_x = f32::MAX;
+    let mut min_y = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut max_y = f32::MIN;
+
+    for (cube, _) in world.world.iter() {
+        let Pixel(x, y) = Cube::<f32>::from(*cube).to_pixel(layout);
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    (min_x, min_y, max_x, max_y)
+}
+
+pub fn draw_thumb(world: &World, &layout: &Layout<f32>, assets: &Assets, time: f32) {
+    macroquad::prelude::clear_background(macroquad::prelude::DARKGRAY);
+
+    world.draw_base_tiles(&layout, &assets, time);
+    world.draw_game_tiles(&layout, &assets);
+
+    for cs in &world.rivers {
+        draw_river(&cs, &layout);
+    }
+
+    let mut shape = assets.river.clone();
+
+    let COLORS = vec!(BEIGE, BLACK, BLUE, BROWN, GOLD, GREEN, LIME, MAGENTA, MAROON, ORANGE, PINK, PURPLE, RED, VIOLET, WHITE, YELLOW,);
+
+    for j in 1..shape.len() {
+        let (id, mut x, mut y) = shape[j];
+        x *= layout.size[0] / assets.init_layout.size[0];
+        y *= layout.size[1] / assets.init_layout.size[1];
+        x += layout.origin[0];
+        y += layout.origin[1];
+        let color = COLORS[j % COLORS.len()];
+        draw_circle(x, y, 8., color);
+    }
+}
+
 // fn draw_editor_brush(editor: &Editor) {
 //     match editor.brush {
 //         BrushMode::Place => {

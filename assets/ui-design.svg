@@ -8,7 +8,7 @@
    version="1.1"
    id="svg1"
    sodipodi:docname="ui-design.svg"
-   inkscape:version="1.4 (e7c3feb100, 2024-10-09)"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -23,15 +23,15 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#000000"
      inkscape:document-units="mm"
-     inkscape:zoom="0.55076989"
-     inkscape:cx="1069.4121"
-     inkscape:cy="777.09404"
-     inkscape:window-width="1189"
-     inkscape:window-height="1211"
-     inkscape:window-x="870"
-     inkscape:window-y="245"
-     inkscape:window-maximized="0"
-     inkscape:current-layer="g28" />
+     inkscape:zoom="0.38945313"
+     inkscape:cx="1088.7061"
+     inkscape:cy="734.36308"
+     inkscape:window-width="2560"
+     inkscape:window-height="1371"
+     inkscape:window-x="0"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g5-6-6" />
   <defs
      id="defs1">
     <inkscape:path-effect
@@ -593,6 +593,127 @@
        width="691.75897"
        height="139.80431"
        id="rect2-5-4-2-5-9-0-7-0-6" />
+    <inkscape:path-effect
+       effect="fillet_chamfer"
+       id="path-effect3-1-0-2-5-2-3-5-7-5-1"
+       is_visible="true"
+       lpeversion="1"
+       nodesatellites_param="F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1"
+       radius="50"
+       unit="px"
+       method="auto"
+       mode="F"
+       chamfer_steps="1"
+       flexible="false"
+       use_knot_distance="true"
+       apply_no_radius="true"
+       apply_with_radius="true"
+       only_selected="false"
+       hide_knots="false" />
+    <rect
+       x="933.23907"
+       y="174.30147"
+       width="691.75897"
+       height="139.80431"
+       id="rect2-5-4-2-5-9-0-7-0-6-2" />
+    <inkscape:path-effect
+       effect="fillet_chamfer"
+       id="path-effect3-1-0-2-5-2-3-5-6"
+       is_visible="true"
+       lpeversion="1"
+       nodesatellites_param="F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1"
+       radius="50"
+       unit="px"
+       method="auto"
+       mode="F"
+       chamfer_steps="1"
+       flexible="false"
+       use_knot_distance="true"
+       apply_no_radius="true"
+       apply_with_radius="true"
+       only_selected="false"
+       hide_knots="false" />
+    <rect
+       x="933.23907"
+       y="174.30147"
+       width="691.75897"
+       height="139.80431"
+       id="rect2-5-4-2-5-9-0-7-1" />
+    <inkscape:path-effect
+       effect="fillet_chamfer"
+       id="path-effect3-1-0-2-5-2-3-5-7-8"
+       is_visible="true"
+       lpeversion="1"
+       nodesatellites_param="F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1"
+       radius="50"
+       unit="px"
+       method="auto"
+       mode="F"
+       chamfer_steps="1"
+       flexible="false"
+       use_knot_distance="true"
+       apply_no_radius="true"
+       apply_with_radius="true"
+       only_selected="false"
+       hide_knots="false" />
+    <rect
+       x="933.23907"
+       y="174.30147"
+       width="691.75897"
+       height="139.80431"
+       id="rect2-5-4-2-5-9-0-7-0-7" />
+    <rect
+       x="933.23907"
+       y="174.30147"
+       width="1043.9933"
+       height="277.79297"
+       id="rect2-5-4-2-5-9-0-7-0-7-7" />
+    <inkscape:path-effect
+       effect="fillet_chamfer"
+       id="path-effect3-1-0-2-5-2-8-7"
+       is_visible="true"
+       lpeversion="1"
+       nodesatellites_param="F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1"
+       radius="50"
+       unit="px"
+       method="auto"
+       mode="F"
+       chamfer_steps="1"
+       flexible="false"
+       use_knot_distance="true"
+       apply_no_radius="true"
+       apply_with_radius="true"
+       only_selected="false"
+       hide_knots="false" />
+    <rect
+       x="933.23907"
+       y="174.30147"
+       width="910.54362"
+       height="141.61995"
+       id="rect2-5-4-2-5-9-5-5" />
+    <inkscape:path-effect
+       effect="fillet_chamfer"
+       id="path-effect3-1-0-2-5-2-8-7-7"
+       is_visible="true"
+       lpeversion="1"
+       nodesatellites_param="F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1 @ F,0,0,1,0,13.229167,0,1"
+       radius="50"
+       unit="px"
+       method="auto"
+       mode="F"
+       chamfer_steps="1"
+       flexible="false"
+       use_knot_distance="true"
+       apply_no_radius="true"
+       apply_with_radius="true"
+       only_selected="false"
+       hide_knots="false" />
+    <rect
+       x="933.23907"
+       y="174.30147"
+       width="691.75897"
+       height="139.80431"
+       id="rect2-5-4-2-5-9-5-5-0" />
   </defs>
   <g
      inkscape:groupmode="layer"
@@ -627,7 +748,7 @@
        y="0"><tspan
          x="934.98535"
          y="259.23828"
-         id="tspan1">Generate New</tspan></text>
+         id="tspan28">Generate New</tspan></text>
     <rect
        style="fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
        id="rect4"
@@ -686,7 +807,7 @@
            y="0"><tspan
              x="1179.0166"
              y="259.23828"
-             id="tspan3">Play</tspan></text>
+             id="tspan29">Play</tspan></text>
       </g>
       <text
          xml:space="preserve"
@@ -753,7 +874,7 @@
          y="0"><tspan
            x="1119.626"
            y="259.23828"
-           id="tspan6">Create</tspan></text>
+           id="tspan30">Create</tspan></text>
       <path
          style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
          id="path39"
@@ -774,7 +895,7 @@
          y="0"><tspan
            x="1131.04"
            y="259.23828"
-           id="tspan7">Select</tspan></text>
+           id="tspan31">Select</tspan></text>
     </g>
     <rect
        style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:0.880921;stroke-dasharray:none;stroke-opacity:1"
@@ -830,7 +951,7 @@
          y="0"><tspan
            x="1179.0166"
            y="259.23828"
-           id="tspan8">Play</tspan></text>
+           id="tspan33">Play</tspan></text>
     </g>
     <text
        xml:space="preserve"
@@ -895,7 +1016,7 @@
          inkscape:label="choose-map-text"><tspan
            x="985.35254"
            y="259.23828"
-           id="tspan9">Choose Map</tspan></text>
+           id="tspan34">Choose Map</tspan></text>
     </g>
     <rect
        style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.31473;stroke-dasharray:none;stroke-opacity:1"
@@ -931,7 +1052,7 @@
        y="0"><tspan
          x="1071.79"
          y="259.23828"
-         id="tspan10">Address:</tspan></text>
+         id="tspan38">Address:</tspan></text>
     <text
        xml:space="preserve"
        transform="matrix(0.26458333,0,0,0.26458333,22.359043,212.99757)"
@@ -941,7 +1062,7 @@
        y="0"><tspan
          x="967.53418"
          y="259.23828"
-         id="tspan11">192.168.0.1:8000</tspan></text>
+         id="tspan39">192.168.0.1:8000</tspan></text>
     <path
        style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
        id="rect1-7-8-9-0"
@@ -962,7 +1083,7 @@
        y="0"><tspan
          x="1191.8369"
          y="259.23828"
-         id="tspan12">Join</tspan></text>
+         id="tspan49">Join</tspan></text>
     <path
        style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
        id="rect1-7-8-9-6"
@@ -983,7 +1104,7 @@
        y="0"><tspan
          x="1169.8291"
          y="259.23828"
-         id="tspan13">Host</tspan></text>
+         id="tspan50">Host</tspan></text>
     <text
        xml:space="preserve"
        transform="matrix(0.26458333,0,0,0.26458333,-96.806432,9.3382275)"
@@ -993,7 +1114,7 @@
        y="0"><tspan
          x="985.78516"
          y="259.23828"
-         id="tspan14">Hosting at 192.168.0.1:8000</tspan></text>
+         id="tspan51">Hosting at 192.168.0.1:8000</tspan></text>
     <text
        xml:space="preserve"
        transform="matrix(0.26458333,0,0,0.26458333,-105.75587,9.0485326)"
@@ -1003,7 +1124,7 @@
        y="0"><tspan
          x="969.8877"
          y="270.13281"
-         id="tspan15">Connected to 192.168.0.1:8000</tspan></text>
+         id="tspan52">Connected to 192.168.0.1:8000</tspan></text>
     <path
        style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
        id="rect1-7-8-9-0-9"
@@ -1024,7 +1145,7 @@
        y="0"><tspan
          x="972.06348"
          y="259.23828"
-         id="tspan16">Rejoin Lobby</tspan></text>
+         id="tspan53">Rejoin Lobby</tspan></text>
     <path
        style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
        id="rect1-7-8-9-6-0"
@@ -1045,7 +1166,7 @@
        y="0"><tspan
          x="1012.4697"
          y="259.23828"
-         id="tspan17">Disconnect</tspan></text>
+         id="tspan54">Disconnect</tspan></text>
   </g>
   <g
      inkscape:groupmode="layer"
@@ -1054,7 +1175,8 @@
      style="display:inline">
     <g
        id="g33"
-       inkscape:label="rhs">
+       inkscape:label="rhs"
+       style="display:inline">
       <rect
          style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
          id="rect3-5"
@@ -1140,7 +1262,7 @@
            y="0"><tspan
              x="1162.5869"
              y="259.23828"
-             id="tspan20">Back</tspan></text>
+             id="tspan55">Back</tspan></text>
         <path
            style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
            id="rect1-7-8-9-0-8-9-6-3"
@@ -1151,7 +1273,7 @@
            sodipodi:type="rect"
            inkscape:path-effect="#path-effect3-1-0-2-5-2-3-5-7"
            d="m 259.42112,46.117264 h 158.4911 a 13.229167,13.229167 45 0 1 13.22917,13.229167 v 11.49233 A 13.229167,13.229167 135 0 1 417.91222,84.067928 H 259.42112 A 13.229167,13.229167 45 0 1 246.19196,70.838761 v -11.49233 a 13.229167,13.229167 135 0 1 13.22916,-13.229167 z"
-           transform="matrix(0.6737473,0,0,1.0049711,44.130658,-29.48666)" />
+           transform="matrix(0.6737473,0,0,1.0049711,44.659825,-29.48666)" />
         <text
            xml:space="preserve"
            transform="matrix(0.26458333,0,0,0.26458333,-65.518805,-25.507701)"
@@ -1161,7 +1283,7 @@
            y="0"><tspan
              x="1179.0166"
              y="259.23828"
-             id="tspan21">Play</tspan></text>
+             id="tspan56">Play</tspan></text>
       </g>
       <rect
          style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
@@ -1171,6 +1293,141 @@
          x="21.257067"
          y="11.943343"
          inkscape:label="browser" />
+      <g
+         id="g5-6"
+         inkscape:label="player-slot-1"
+         transform="translate(-173.26744,-228.65865)"
+         style="display:inline">
+        <path
+           style="display:inline;fill:#171717;fill-opacity:0.49915603;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
+           id="rect1-7-8-9-0-8-98-2"
+           width="184.94943"
+           height="37.950665"
+           x="246.19196"
+           y="46.117264"
+           sodipodi:type="rect"
+           inkscape:path-effect="#path-effect3-1-0-2-5-2-8-7"
+           d="m 259.42112,46.117264 h 158.4911 a 13.229167,13.229167 45 0 1 13.22917,13.229167 v 11.49233 A 13.229167,13.229167 135 0 1 417.91222,84.067928 H 259.42112 A 13.229167,13.229167 45 0 1 246.19196,70.838761 v -11.49233 a 13.229167,13.229167 135 0 1 13.22916,-13.229167 z"
+           transform="matrix(1.3424782,0,0,0.99561423,-121.14067,213.69789)" />
+        <text
+           xml:space="preserve"
+           transform="matrix(0.26458333,0,0,0.26458333,-32.897018,217.35677)"
+           id="text1-0-8-4-5-9-8-9"
+           style="font-size:96px;text-align:center;white-space:pre;shape-inside:url(#rect2-5-4-2-5-9-5-5);display:inline;fill:#370909;fill-opacity:1;stroke:#000000;stroke-opacity:1"
+           x="93.960938"
+           y="0"><tspan
+             x="986.37012"
+             y="259.23828"
+             id="tspan57">&lt;Assign Player&gt;</tspan></text>
+      </g>
+      <g
+         id="g5-6-6"
+         inkscape:label="player-slot-1"
+         transform="translate(-173.05272,-177.16457)"
+         style="display:inline">
+        <path
+           style="display:inline;fill:#142f2c;fill-opacity:0.49915603;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
+           id="rect1-7-8-9-0-8-98-2-0"
+           width="184.94943"
+           height="37.950665"
+           x="246.19196"
+           y="46.117264"
+           sodipodi:type="rect"
+           inkscape:path-effect="#path-effect3-1-0-2-5-2-8-7-7"
+           d="m 259.42112,46.117264 h 158.4911 a 13.229167,13.229167 45 0 1 13.22917,13.229167 v 11.49233 A 13.229167,13.229167 135 0 1 417.91222,84.067928 H 259.42112 A 13.229167,13.229167 45 0 1 246.19196,70.838761 v -11.49233 a 13.229167,13.229167 135 0 1 13.22916,-13.229167 z"
+           transform="matrix(1.3424782,0,0,0.99561423,-121.14067,213.69789)" />
+        <text
+           xml:space="preserve"
+           transform="matrix(0.26458333,0,0,0.26458333,-2.3923704,217.11657)"
+           id="text1-0-8-4-5-9-8-9-6"
+           style="font-size:96px;text-align:center;white-space:pre;shape-inside:url(#rect2-5-4-2-5-9-5-5-0);display:inline;fill:#370909;fill-opacity:1;stroke:#000000;stroke-opacity:1"
+           x="93.960938"
+           y="0"><tspan
+             x="1083.9541"
+             y="259.23828"
+             id="tspan58">Player 2</tspan></text>
+        <rect
+           style="fill:#142f2c;fill-opacity:0.499156;stroke-width:0.264583"
+           id="rect9"
+           width="6.2450457"
+           height="0.96077627"
+           x="-68.102127"
+           y="202.14476" />
+      </g>
+    </g>
+    <g
+       id="g2-0"
+       inkscape:label="lhs-create"
+       style="display:none"
+       transform="translate(0.22940027,-0.60280753)">
+      <g
+         id="g32-2"
+         transform="translate(-45.490539,297.40905)">
+        <path
+           style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
+           id="rect1-7-8-9-0-8-9-6-37"
+           width="184.94943"
+           height="37.950665"
+           x="246.19196"
+           y="46.117264"
+           sodipodi:type="rect"
+           inkscape:path-effect="#path-effect3-1-0-2-5-2-3-5-6"
+           d="m 259.42112,46.117264 h 158.4911 a 13.229167,13.229167 45 0 1 13.22917,13.229167 v 11.49233 A 13.229167,13.229167 135 0 1 417.91222,84.067928 H 259.42112 A 13.229167,13.229167 45 0 1 246.19196,70.838761 v -11.49233 a 13.229167,13.229167 135 0 1 13.22916,-13.229167 z"
+           transform="matrix(0.6737473,0,0,1.0049711,-92.525559,-29.602892)" />
+        <text
+           xml:space="preserve"
+           transform="matrix(0.26458333,0,0,0.26458333,-202.70415,-25.094766)"
+           id="text1-0-8-4-5-9-4-2-5"
+           style="font-size:96px;text-align:center;white-space:pre;shape-inside:url(#rect2-5-4-2-5-9-0-7-1);display:inline;fill:#370909;fill-opacity:1;stroke:#000000;stroke-opacity:1"
+           x="93.960938"
+           y="0"><tspan
+             x="1162.5869"
+             y="259.23828"
+             id="tspan59">Back</tspan></text>
+        <path
+           style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
+           id="rect1-7-8-9-0-8-9-6-3-2"
+           width="184.94943"
+           height="37.950665"
+           x="246.19196"
+           y="46.117264"
+           sodipodi:type="rect"
+           inkscape:path-effect="#path-effect3-1-0-2-5-2-3-5-7-8"
+           d="m 259.42112,46.117264 h 158.4911 a 13.229167,13.229167 45 0 1 13.22917,13.229167 v 11.49233 A 13.229167,13.229167 135 0 1 417.91222,84.067928 H 259.42112 A 13.229167,13.229167 45 0 1 246.19196,70.838761 v -11.49233 a 13.229167,13.229167 135 0 1 13.22916,-13.229167 z"
+           transform="matrix(0.6737473,0,0,1.0049711,44.659825,-29.48666)" />
+        <text
+           xml:space="preserve"
+           transform="matrix(0.26458333,0,0,0.26458333,-65.518805,-25.507701)"
+           id="text1-0-8-4-5-9-4-2-6-2"
+           style="font-size:96px;text-align:center;white-space:pre;shape-inside:url(#rect2-5-4-2-5-9-0-7-0-7);display:inline;fill:#370909;fill-opacity:1;stroke:#000000;stroke-opacity:1"
+           x="93.960938"
+           y="0"><tspan
+             x="1161.2979"
+             y="259.23828"
+             id="tspan60">Save</tspan></text>
+      </g>
+      <rect
+         style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
+         id="rect4-9-9"
+         width="279.22165"
+         height="288.73285"
+         x="21.257067"
+         y="11.943343"
+         inkscape:label="browser" />
+      <text
+         xml:space="preserve"
+         transform="matrix(0.26458333,0,0,0.26458333,-222.00714,-24.490312)"
+         id="text1-0-8-4-5-9-4-2-6-2-5"
+         style="font-size:96px;text-align:center;white-space:pre;shape-inside:url(#rect2-5-4-2-5-9-0-7-0-7-7);shape-padding:7.26256;display:inline;fill:#370909;fill-opacity:1;stroke:#000000;stroke-opacity:1"
+         x="93.960938"
+         y="0"><tspan
+           x="1220.04"
+           y="266.5"
+           id="tspan61">Template:
+</tspan><tspan
+           x="1160.3916"
+           y="386.5"
+           id="tspan62">&lt; Custom &gt;</tspan></text>
     </g>
     <g
        id="g2"
@@ -1178,30 +1435,62 @@
        style="display:none"
        transform="translate(0.51938125,0.49240706)">
       <g
-         id="g32-1"
-         transform="translate(-45.490539,297.40905)"
-         inkscape:label="select-btn">
-        <path
-           style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
-           id="rect1-7-8-9-0-8-9-6-3-0"
-           width="184.94943"
-           height="37.950665"
-           x="246.19196"
-           y="46.117264"
-           sodipodi:type="rect"
-           inkscape:path-effect="#path-effect3-1-0-2-5-2-3-5-7-5"
-           d="m 259.42112,46.117264 h 158.4911 a 13.229167,13.229167 45 0 1 13.22917,13.229167 v 11.49233 A 13.229167,13.229167 135 0 1 417.91222,84.067928 H 259.42112 A 13.229167,13.229167 45 0 1 246.19196,70.838761 v -11.49233 a 13.229167,13.229167 135 0 1 13.22916,-13.229167 z"
-           transform="matrix(1.4310223,0,0,0.99463535,-282.46983,-28.813879)" />
+         id="g4"
+         transform="translate(1.0583333)">
+        <g
+           id="g3"
+           transform="matrix(0.96008812,0,0,1.0004909,12.01167,-0.16363299)">
+          <path
+             style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
+             id="rect1-7-8-9-0-8-9-6-3-0"
+             width="184.94943"
+             height="37.950665"
+             x="246.19196"
+             y="46.117264"
+             sodipodi:type="rect"
+             inkscape:path-effect="#path-effect3-1-0-2-5-2-3-5-7-5"
+             d="m 259.42112,46.117264 h 158.4911 a 13.229167,13.229167 45 0 1 13.22917,13.229167 v 11.49233 A 13.229167,13.229167 135 0 1 417.91222,84.067928 H 259.42112 A 13.229167,13.229167 45 0 1 246.19196,70.838761 v -11.49233 a 13.229167,13.229167 135 0 1 13.22916,-13.229167 z"
+             transform="matrix(0.77900557,0,0,1.003364,-35.085812,268.027)" />
+        </g>
         <text
            xml:space="preserve"
-           transform="matrix(0.26458333,0,0,0.26458333,-131.13569,-25.507701)"
+           transform="matrix(0.26458333,0,0,0.26458333,-107.83413,271.90135)"
            id="text1-0-8-4-5-9-4-2-6-9"
            style="font-size:96px;text-align:center;white-space:pre;shape-inside:url(#rect2-5-4-2-5-9-0-7-0-6);display:inline;fill:#370909;fill-opacity:1;stroke:#000000;stroke-opacity:1"
            x="93.960938"
            y="0"><tspan
              x="1131.04"
              y="259.23828"
-             id="tspan23">Select</tspan></text>
+             id="tspan63">Select</tspan></text>
+      </g>
+      <g
+         id="g4-9"
+         style="display:inline"
+         transform="translate(-140.77963,0.6122482)">
+        <g
+           id="g6">
+          <path
+             style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
+             id="rect1-7-8-9-0-8-9-6-3-0-6"
+             width="184.94943"
+             height="37.950665"
+             x="246.19196"
+             y="46.117264"
+             sodipodi:type="rect"
+             inkscape:path-effect="#path-effect3-1-0-2-5-2-3-5-7-5-1"
+             d="m 259.42112,46.117264 h 158.4911 a 13.229167,13.229167 45 0 1 13.22917,13.229167 v 11.49233 A 13.229167,13.229167 135 0 1 417.91222,84.067928 H 259.42112 A 13.229167,13.229167 45 0 1 246.19196,70.838761 v -11.49233 a 13.229167,13.229167 135 0 1 13.22916,-13.229167 z"
+             transform="matrix(0.74791399,0,0,1.0038566,-22.732135,267.99494)" />
+          <text
+             xml:space="preserve"
+             transform="matrix(0.26458333,0,0,0.26458333,-107.83413,271.90135)"
+             id="text1-0-8-4-5-9-4-2-6-9-0"
+             style="font-size:96px;text-align:center;white-space:pre;shape-inside:url(#rect2-5-4-2-5-9-0-7-0-6-2);display:inline;fill:#370909;fill-opacity:1;stroke:#000000;stroke-opacity:1"
+             x="93.960938"
+             y="0"><tspan
+               x="1119.626"
+               y="259.23828"
+               id="tspan64">Create</tspan></text>
+        </g>
       </g>
       <rect
          style="display:inline;fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
@@ -1236,7 +1525,7 @@
        inkscape:label="choose-map-text"><tspan
          x="985.35254"
          y="259.23828"
-         id="tspan24">Choose Map</tspan></text>
+         id="tspan65">Choose Map</tspan></text>
     <g
        id="g5"
        inkscape:label="play-button"
@@ -1261,7 +1550,7 @@
          y="0"><tspan
            x="1179.0166"
            y="259.23828"
-           id="tspan25">Play</tspan></text>
+           id="tspan66">Play</tspan></text>
     </g>
     <text
        xml:space="preserve"
@@ -1325,7 +1614,7 @@
        y="0"><tspan
          x="1179.0166"
          y="259.23828"
-         id="tspan28">Play</tspan></text>
+         id="tspan67">Play</tspan></text>
     <path
        style="fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
        id="rect1-7"
@@ -1346,7 +1635,7 @@
        y="0"><tspan
          x="1010.8994"
          y="259.23828"
-         id="tspan29">Multiplayer</tspan></text>
+         id="tspan68">Multiplayer</tspan></text>
     <path
        style="fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
        id="rect1-7-8"
@@ -1367,7 +1656,7 @@
        y="0"><tspan
          x="1082.2432"
          y="259.23828"
-         id="tspan30">Settings</tspan></text>
+         id="tspan69">Settings</tspan></text>
     <path
        style="fill:#282828;fill-opacity:1;stroke:#3a0909;stroke-width:1.065;stroke-dasharray:none;stroke-opacity:1"
        id="rect1-7-8-9"
@@ -1388,6 +1677,6 @@
        y="0"><tspan
          x="1188.2275"
          y="259.23828"
-         id="tspan31">Exit</tspan></text>
+         id="tspan70">Exit</tspan></text>
   </g>
 </svg>

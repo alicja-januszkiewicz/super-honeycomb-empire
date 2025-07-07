@@ -4,6 +4,7 @@ use serde::Deserialize;
 use serde::Serialize;
 use strum::Display;
 
+use crate::cli::Cli;
 use crate::rules::Ruleset;
 use crate::ui;
 use crate::Assets;
@@ -23,6 +24,8 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::format;
+use std::fmt::write;
+use std::fmt::Display;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::io::BufWriter;
@@ -83,9 +86,11 @@ where
         let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
         let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
 
-        let players = std::mem::take(&mut ui.players);
+        let players_map = std::mem::take(&mut ui.players);
+        let players: Vec<Player> = players_map.into_values().collect();
+        let mut world = std::mem::take(&mut ui.mapgen_map).unwrap();
         let rules = Ruleset::from(ui);
-        let mut component = Game::new(players, rules, assets);
+        let mut component = Game::new(players, world, rules, assets);
 
         let app = Box::new( Self {component, endpoint} );
         
@@ -99,9 +104,13 @@ where
     Game: Component, 
 {
     pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Box<dyn Component> {
-        let players = std::mem::take(&mut ui.players);
-        let rules = Ruleset::default(ui.victory_condition, &ui.players);
-        let mut component = Game::new(players, rules, assets);
+        let players_map = std::mem::take(&mut ui.players);
+        let players: Vec<Player> = players_map.into_values().collect();
+        //let rules = Ruleset::default(ui.victory_condition, &players); // or empty vector?
+        let mut world = std::mem::take(&mut ui.mapgen_map).unwrap();
+        let rules = Ruleset::from(ui);
+        // let mut world = ui.mapgen_map.unwrap();
+        let mut component = Game::new(players, world, rules, assets);
 
         let app= Box::new(component);
 
@@ -329,7 +338,7 @@ impl App<ServerMode, Game> {
                     player = p.pop().unwrap();
                     // broadcast to other players
                     let message = Message::NewPlayer{starting_position, player};
-                    for (_, s) in &self.endpoint.streams {
+                    for s in &self.endpoint.streams {
                         write_json_message(&s, &message);
                     }
                     let Message::NewPlayer{starting_position: _, player: pl} = message else {panic!()};
@@ -360,7 +369,7 @@ impl App<ServerMode, Game> {
         }
         let idx = self.component.current_player_index().unwrap();
         // println!("listening for player index {}", idx);
-        let Some(stream) = self.endpoint.streams.get(&idx) else {return };//&self.streams[idx];
+        let Some(stream) = self.endpoint.streams.get(idx) else {return };//&self.streams[idx];
         // println!("got stream...");
         // let Ok(command): Result<Command, Box<dyn std::error::Error>> = read_json_message(stream) else {println!("bad command?"); return Ok(())};
         let Some(Ok(message)): Option<Result<Message, std::io::Error>> = read_json_message_async(stream) else {return};
@@ -374,7 +383,7 @@ impl App<ServerMode, Game> {
             Message::SkipTurn => {
                 self.component.current_player_mut().unwrap().skip_turn();
 
-                for (_, s) in self.endpoint.streams.iter() {
+                for s in self.endpoint.streams.iter() {
                     write_json_message(s, &Message::SkipTurn);
                 };
                 // self.endpoint
@@ -389,7 +398,7 @@ impl App<ServerMode, Game> {
     }
     fn handle_command(&mut self, command: Command) {//-> <ServerMode as Mode>::Endpoint {
         let idx = self.component.current_player_index().unwrap();
-        let Some(stream) = self.endpoint.streams.get(&idx) else {return};
+        let Some(stream) = self.endpoint.streams.get(idx) else {return};
 
         // play out the command step-by-step
         // at each step, check which players can observe the command (before executing the step)
@@ -415,7 +424,7 @@ impl App<ServerMode, Game> {
         observations.enumerate().for_each(|(idx, obs)| {
             obs.into_iter().for_each(|command| {
                 println!("sending {:?} to {}", command, idx);
-                write_json_message(self.endpoint.streams.get(&idx).unwrap(), &Message::Command(command));
+                write_json_message(self.endpoint.streams.get(idx).unwrap(), &Message::Command(command));
             });
         });
         self.component.player_views = views;
@@ -430,6 +439,7 @@ impl<M: Mode> App<M, Editor> {
 #[derive(Debug)]
 pub struct Client {
     pub stream: TcpStream,
+    players: Vec<NetworkPlayer>,
     pub chatlog: Vec<ChatMsg>,
 }
 
@@ -469,6 +479,22 @@ impl SendChat for Client {
     fn send_chat_message(&mut self, msg: String) -> Result<(), Box<dyn std::error::Error>> {
         let message: Message = Message::Chat(ChatMsg::from_str(&msg));
         write_json_message(&self.stream, &message)
+    }
+}
+
+pub trait GetPlayers {
+    fn get_players(&self) -> &Vec<NetworkPlayer>;
+}
+
+impl GetPlayers for Client {
+    fn get_players(&self) -> &Vec<NetworkPlayer> {
+        &self.players
+    }
+}
+
+impl GetPlayers for Server {
+    fn get_players(&self) -> &Vec<NetworkPlayer> {
+        &self.players
     }
 }
 
@@ -590,8 +616,9 @@ impl Client {
         // println!("Player sent...");
 
         stream.set_nonblocking(true)?;
+        let players = vec!();
         let chatlog = vec!();
-        Ok(Self{stream, chatlog})
+        Ok(Self{stream, players, chatlog})
 
         //Ok(Self{player: Player::new("default", None), app, stream})
         // if let Ok(stream) = TcpStream::connect(addr) {
@@ -750,9 +777,23 @@ pub trait Component: IntoAny {
     // fn empty() -> Self;
 }
 
+#[derive(Debug)]
+pub struct NetworkPlayer {
+    pub name: String,
+    pub is_ready: bool,
+    pub faction_selection: Option<usize>,
+}
+
+impl Display for NetworkPlayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
 pub struct Server {
     listener: TcpListener,
-    streams: HashMap<usize, TcpStream>, // some players may not have a stream
+    streams: Vec<TcpStream>,
+    players: Vec<NetworkPlayer>,
     pub chatlog: Vec<ChatMsg>,
 }
 
@@ -780,15 +821,15 @@ impl Server {
     }
 
     fn poll_all_streams(&mut self) {
-        for (idx, stream) in self.streams.iter() {
+        for (player, stream) in self.players.iter().zip(&self.streams) {
             // println!("listening for player index {}", idx);
             let Some(Ok(message)): Option<Result<Message, std::io::Error>> = read_json_message_async(stream) else {return};
         
-            println!("received message from pid {:}: {:}", idx, message);
+            println!("received message from pid {:}: {:}", player, message);
     
             match message {
                 Message::Chat(mut msg) => {
-                    msg.author = format!("Player {:}", idx);
+                    msg.author = format!("{:}", player);
                     msg.timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
                     self.chatlog.push(msg.clone());
                     write_json_message(stream, &Message::Chat(msg));
@@ -804,7 +845,7 @@ impl SendChat for Server {
         let author = "Server".to_string();
         let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
         let message = ChatMsg {body: msg, author, timestamp};
-        for (_, s) in self.streams.iter() {
+        for s in self.streams.iter() {
             write_json_message(s, &Message::Chat(message.clone()));
         };
         self.chatlog.push(message);
@@ -816,9 +857,10 @@ impl Server {
     pub fn new<A: std::net::ToSocketAddrs>(addr: A) -> Result<Self, std::io::Error>{
         let listener = std::net::TcpListener::bind(addr)?;
         listener.set_nonblocking(true)?;
-        let streams = HashMap::new();
+        let streams = vec!();
+        let players = vec!();
         let chatlog = vec!();
-        Ok(Self{listener, streams, chatlog})
+        Ok(Self{listener, streams, players, chatlog})
         // let listeners: Result<Vec<_>, _> = addrs.iter().map(|a| {std::net::TcpListener::bind(a)}).collect();
         // Ok(Self{game, listeners: listeners?})
     }

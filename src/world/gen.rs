@@ -32,34 +32,134 @@ extern crate rand;
 use macroquad::shapes::draw_hexagon;
 use macroquad::shapes::draw_line;
 use macroquad::shapes::draw_poly_lines;
+use num::iter;
 use rand::seq::IteratorRandom;
 use rand::Rng;
 use rand::random;
 use rand::seq::index::sample;
+use strum::AsStaticStr;
+use strum::Display;
+use strum::EnumCount;
+use strum::EnumIter;
 
 // #layout = cubic.Layout(cubic.orientation_pointy, cubic.Point(50, 50), cubic.Point(800, 550))
 // let layout = Layout(POINTY, (.02, .02), (.2, 0));
 // #layout = cubic.Layout(cubic.orientation_pointy, cubic.Point(1, 1), cubic.Point(0, 0))
 
+#[derive(AsStaticStr, Clone, Debug, EnumIter, EnumCount, PartialEq)]
 pub enum CapitalsGen {
     Classic,
-    Random,
-    MaxDist,
+    Random(usize), 
+    MaxDist(usize),
 }
 
+impl Default for CapitalsGen {
+    fn default() -> Self {
+        CapitalsGen::Random(4)
+    }
+}
+
+#[derive(AsStaticStr, Clone, Debug, Default, EnumIter, EnumCount, PartialEq)]
 pub enum LocalitiesGen {
-    Random,
+    Random, #[default]
     RandomOts, // One Tile of Space
 }
 
+#[derive(AsStaticStr, Clone, Debug, EnumIter, EnumCount, PartialEq)]
 pub enum ShapeGen {
     Classic,
-    Hexagonal(i32),
+    Hexagonal(i32), 
     Custom(Vec<(f32, f32)>),
 }
+
+impl Default for ShapeGen {
+    fn default() -> Self {
+        Self::Hexagonal(12)
+    }
+}
+
+#[derive(AsStaticStr, Clone, Debug, EnumIter, EnumCount, PartialEq)]
 pub enum RiverGen {
     Random(usize, f32),
     Custom(Vec<(usize, f32, f32)>),
+}
+
+impl Default for RiverGen {
+    fn default() -> Self {
+        Self::Random(20, 5.)
+    }
+}
+
+#[derive(Debug)]
+pub struct Template {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub shape: Option<ShapeGen>,
+    pub capitals: Option<CapitalsGen>,
+    pub localities: Option<LocalitiesGen>,
+    pub rivers: Option<RiverGen>,
+}
+
+const CLASSIC: Template = {
+    Template {
+        name: "Classic",
+        description: "Hex Empire 1 inspired map template",
+        shape: Some(ShapeGen::Classic),
+        capitals: Some(CapitalsGen::Classic),
+        localities: Some(LocalitiesGen::Random),
+        rivers: None,
+    }
+};
+
+impl Default for Template {
+    fn default() -> Self {
+        CLASSIC
+    }
+}
+
+const HEX: Template = {
+    Template {
+        name: "Hexagon",
+        description: "Hexagonal map template.",
+        shape: Some(ShapeGen::Hexagonal(12)),
+        capitals: Some(CapitalsGen::Random(6)),
+        localities: Some(LocalitiesGen::Random),
+        rivers: Some(RiverGen::Random(20, 5.)),
+    }
+};
+
+pub const CUSTOM: Template = {
+    Template {
+        name: "Custom",
+        description: "",
+        shape: None,
+        capitals: None,
+        localities: None,
+        rivers: None,
+    }
+};
+
+pub enum TemplateFields {
+    Name,
+    Capitals,
+    Localities,
+    Rivers,
+    Shape,
+}
+
+#[derive(Clone, Debug, Default, EnumIter, EnumCount, PartialEq)]
+pub enum TEMPLATES {
+    #[default] CLASSIC,
+    HEX,
+}
+
+impl TEMPLATES {
+    pub fn get(&self) -> Template {
+        match self {
+            Self::CLASSIC => CLASSIC,
+            Self::HEX => HEX,
+        }
+    }
 }
 
 impl World {
@@ -98,10 +198,10 @@ impl World {
         }
     }
 
-    fn choose_shape_gen(&mut self, shape: ShapeGen, init_layout: &crate::cubic::Layout<f32>) {
+    fn choose_shape_gen(&mut self, shape: &ShapeGen, init_layout: &crate::cubic::Layout<f32>) {
         match shape {
             ShapeGen::Classic => self.gen_classic_shape(),
-            ShapeGen::Hexagonal(radius) => self.gen_hexagonal_shape(radius),
+            ShapeGen::Hexagonal(radius) => self.gen_hexagonal_shape(*radius),
             ShapeGen::Custom(shape) => {
                 let my_shape_map = World::from_shape(shape, init_layout);
                 self.gen_custom_shape(my_shape_map);
@@ -109,15 +209,15 @@ impl World {
         }
     }
 
-    fn choose_river_gen(&mut self, river: RiverGen, init_layout: &Layout<f32>) {
+    fn choose_river_gen(&mut self, river: &RiverGen, init_layout: &Layout<f32>) {
         let land_tiles: HashSet<&Cube<i32>> = self.world.iter().filter_map(|(c, t)| {
             if matches!(t.category, TileCategory::Farmland) {Some(c)} else {None}
         }).collect();
         match river {
             RiverGen::Random(ln, th) => {
-                self.rivers = crate::river::generate_river(land_tiles, ln, th);
+                self.rivers = crate::river::generate_river(land_tiles, *ln, *th);
             }
-            RiverGen::Custom(mut river) => {
+            RiverGen::Custom(river) => {
                 // TODO new algo:
                 // iter line by line
                 // round to find all cubes
@@ -349,7 +449,7 @@ impl World {
     //     }
     // }
 
-    fn choose_localities_gen(&mut self, gen: LocalitiesGen, locality_names: &mut Vec<&str>) {
+    fn choose_localities_gen(&mut self, gen: &LocalitiesGen, locality_names: &mut Vec<&str>) {
         match gen {
             LocalitiesGen::Random => self.gen_random_localities(locality_names),
             LocalitiesGen::RandomOts => self.gen_random_localities_with_ots(locality_names),
@@ -357,7 +457,7 @@ impl World {
     }
 
     /// Spawn positions hardcoded to correspond to the original hex empire 1 spawn positions.
-    fn gen_classic_capitals(&mut self, locality_names: &mut Vec<&str>, mut players: &mut Vec<Player>) {
+    fn gen_classic_capitals(&mut self, locality_names: &mut Vec<&str>) {
         let starting_positions = [
             Cube::new(1, 1),
             Cube::new(1, 9),
@@ -365,7 +465,7 @@ impl World {
             Cube::new(18, 0),
         ];
 
-        for (index, ((player, pos), locality_name)) in players.iter_mut().zip(starting_positions.iter()).zip(locality_names.iter()).enumerate() {
+        for (index, ((pos), locality_name)) in starting_positions.iter().zip(locality_names.iter()).enumerate() {
             let mut tile = self.get_mut(&pos).unwrap();
             tile.category = TileCategory::Farmland;
             tile.owner_index = Some(index);
@@ -405,10 +505,10 @@ impl World {
     //     });
     // }
     /// pick a random city for each player and turn it into their capital
-    fn gen_random_capitals(&mut self, locality_names: &mut Vec<&str>, mut players: &mut Vec<Player>) {
+    fn gen_random_capitals(&mut self, locality_names: &mut Vec<&str>, player_n: usize) {
         let cubes_with_cities = self.get_cubes_with_cities();
-        for player in 0..players.len() {
-            self.gen_random_capital(player, &cubes_with_cities);
+        for n in 0..player_n {
+            self.gen_random_capital(n, &cubes_with_cities);
         }
     }
     /// pick a random city for a player and turn it into their capital
@@ -425,21 +525,20 @@ impl World {
         set.insert(cube);
         cube
     }
-    fn gen_maxdist_capitals(&mut self, locality_names: &mut Vec<&str>, mut players: &mut Vec<Player>) {
+    fn gen_maxdist_capitals(&mut self, locality_names: &mut Vec<&str>, player_n: usize) {
         unimplemented!()
     }
 
-    fn choose_capitals_gen(&mut self, gen: CapitalsGen, mut players: &mut Vec<Player>, locality_names: &mut Vec<&str>) {
+    fn choose_capitals_gen(&mut self, gen: &CapitalsGen, locality_names: &mut Vec<&str>) {
         match gen {
-            CapitalsGen::Classic => self.gen_classic_capitals(locality_names, &mut players),
-            CapitalsGen::Random => self.gen_random_capitals(locality_names, &mut players),
-            CapitalsGen::MaxDist => self.gen_maxdist_capitals(locality_names, &mut players),
+            CapitalsGen::Classic => self.gen_classic_capitals(locality_names),
+            CapitalsGen::Random(n) => self.gen_random_capitals(locality_names, *n),
+            CapitalsGen::MaxDist(n) => self.gen_maxdist_capitals(locality_names, *n),
         }
     }
 
     pub fn generate(
         &mut self,
-        players: &mut Vec<Player>,
         shape_gen: ShapeGen,
         river_gen: RiverGen,
         localities_gen: LocalitiesGen,
@@ -447,11 +546,38 @@ impl World {
         locality_names: &mut Vec<&str>,
         init_layout: &crate::cubic::Layout<f32>,
     ) {
-        self.choose_shape_gen(shape_gen, init_layout);
+        self.choose_shape_gen(&shape_gen, init_layout);
         // self.gen_water();
-        self.choose_river_gen(river_gen, init_layout);
-        self.choose_localities_gen(localities_gen, locality_names);
-        self.choose_capitals_gen(capitals_gen, players, locality_names);
+        self.choose_river_gen(&river_gen, init_layout);
+        self.choose_localities_gen(&localities_gen, locality_names);
+        self.choose_capitals_gen(&capitals_gen, locality_names);
+    }
+
+    pub fn generate_from_template(
+        &mut self,
+        template: &Template,
+        locality_names: &mut Vec<&str>,
+        init_layout: &crate::cubic::Layout<f32>,
+    ) {
+        match &template.shape {
+            Some(shape) => self.choose_shape_gen(shape, init_layout),
+            None => {}
+        }
+
+        match &template.rivers {
+            Some(rivers) => self.choose_river_gen(rivers, init_layout),
+            None => {}
+        }
+
+        match &template.localities {
+            Some(localities) => self.choose_localities_gen(localities, locality_names),
+            None => {}
+        }
+
+        match &template.capitals {
+            Some(capitals) => self.choose_capitals_gen(capitals, locality_names),
+            None => {}
+        }
     }
 }
 
@@ -477,7 +603,7 @@ impl World {
     //' If the center of a cell falls inside the shape, it's included in the map.
     //' The grid is then moved around so as to minimise certain metrics, with the aim of
     //' maximising the resultant shape's resemblance to the input shape.
-    fn from_shape(mut shape: Vec<(f32, f32)>, layout: &crate::cubic::Layout<f32>) -> HashSet<Cube<i32>> {
+    fn from_shape(mut shape: &Vec<(f32, f32)>, layout: &crate::cubic::Layout<f32>) -> HashSet<Cube<i32>> {
         // use fold if working w floats: https://stackoverflow.com/questions/28446632/how-do-i-get-the-minimum-or-maximum-value-of-an-iterator-containing-floating-poi
         // let x_max = shape.iter().map(|p| p.0).max().unwrap();
         // let x_min = shape.iter().map(|p| p.0).min().unwrap();

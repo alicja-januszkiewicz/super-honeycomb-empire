@@ -20,7 +20,7 @@ use crate::LocalityCategory;
 //     Manpower(i32),
 // }
 
-#[derive(Serialize, Deserialize)]
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 pub struct Scores {
     manpower: i32,
     water: i32,
@@ -50,7 +50,7 @@ pub const DEFAULT_SCORES: Scores = Scores {
     capital: 100,
 };
 
-#[derive(Serialize, Deserialize)]
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 pub struct AI {
     pub scores: Scores,
 }
