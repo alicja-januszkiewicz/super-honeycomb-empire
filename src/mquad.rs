@@ -1,8 +1,11 @@
 use std::collections::HashSet;
 use std::f32::consts::PI;
 
+use mquad::*;
 use macroquad::prelude::*;
 use macroquad::texture::load_image;
+
+use crate::inputs::{poll_inputs, poll_map_editor_inputs};
 
 use crate::cubic;
 use crate::Visibility;
@@ -72,6 +75,12 @@ pub struct Assets {
     pub shape: Vec<(f32, f32)>,
     pub river: Vec<(usize, f32, f32)>,
 }
+
+
+
+impl FontHandle for macroquad::text::Font {}
+impl TextureHandle for macroquad::texture::Texture2D {}
+impl MaterialHandle for macroquad::material::Material {}
 
 pub fn draw_base_tiles(world: &std::collections::HashMap<&Cube<i32>, &Tile>, layout: &Layout<f32>, assets: &Assets, time: f32) {
     // let lens_center = get_frame_time();
@@ -170,6 +179,23 @@ pub fn draw_game_tiles(world: &std::collections::HashMap<&Cube<i32>, &Tile>, lay
 }
 
 impl World {
+    pub fn draw_shape_outline(mut shape: Vec<(f32, f32)>, layout: &crate::cubic::Layout<f32>, init_layout: &crate::cubic::Layout<f32>) {
+        shape.push(shape[0]);
+        for j in 1..shape.len() {
+            let i = j - 1;
+            let (mut x1, mut y1) = shape[i];
+            let (mut x2, mut y2) = shape[j];
+            x1 *= layout.size[0] / init_layout.size[0];
+            x2 *= layout.size[0] / init_layout.size[0];
+            y1 *= layout.size[1] / init_layout.size[1];
+            y2 *= layout.size[1] / init_layout.size[1];
+            x1 += layout.origin[0];
+            x2 += layout.origin[0];
+            y1 += layout.origin[1];
+            y2 += layout.origin[1];
+            macroquad::shapes::draw_line(x1, y1, x2, y2, 3., macroquad::color::BLACK);
+        }
+    }
     pub fn draw_base_tiles(&self, &layout: &Layout<f32>, assets: &Assets, time: f32) {
         // let lens_center = get_frame_time();
         assets.water_material.set_uniform("Time", time);
@@ -584,4 +610,33 @@ fn draw_river(cube: &crate::river::CubeSide, layout: &Layout<f32>) {
     let thickness = layout.size[0] / 4.;
     let color = BLUE;
     draw_tile_side(cube, layout, thickness, color);
+}
+
+// pub async fn run_editor(world: &World, layout: &Layout<f32>, assets: &Assets, time: f32) {
+pub async fn run_editor(assets: &Assets) {
+
+    let mut editor = Editor::new(World::new(), vec!());
+
+    let size = [32.,32.];
+    // let size = [0.1,0.1]; // use this if in local coords
+    let origin = [300., 300.];//[100.,600.];//[100.,300.];
+    let mut layout = cubic::Layout{orientation: cubic::OrientationKind::Flat(cubic::FLAT), size, origin};
+
+    let mut time = 0.0;
+
+    loop {
+        clear_background(DARKGRAY);
+
+        poll_map_editor_inputs(&mut editor, &mut layout);
+
+        if is_key_pressed(KeyCode::F1) {
+            break
+        }
+
+        draw_editor(&editor, &layout, &assets, time);
+
+        next_frame().await;
+        time += get_frame_time();
+    }
+    
 }

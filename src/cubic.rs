@@ -1,6 +1,4 @@
 extern crate num;
-use macroquad::window::screen_height;
-use macroquad::window::screen_width;
 use num::Signed;
 
 use std::ops::Add;

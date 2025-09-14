@@ -29,9 +29,6 @@ use super::extend_borders;
 // use crate::cubic::FLAT;
 
 extern crate rand;
-use macroquad::shapes::draw_hexagon;
-use macroquad::shapes::draw_line;
-use macroquad::shapes::draw_poly_lines;
 use num::iter;
 use rand::seq::IteratorRandom;
 use rand::Rng;
@@ -582,23 +579,6 @@ impl World {
 }
 
 impl World {
-    pub fn draw_shape_outline(mut shape: Vec<(f32, f32)>, layout: &crate::cubic::Layout<f32>, init_layout: &crate::cubic::Layout<f32>) {
-        shape.push(shape[0]);
-        for j in 1..shape.len() {
-            let i = j - 1;
-            let (mut x1, mut y1) = shape[i];
-            let (mut x2, mut y2) = shape[j];
-            x1 *= layout.size[0] / init_layout.size[0];
-            x2 *= layout.size[0] / init_layout.size[0];
-            y1 *= layout.size[1] / init_layout.size[1];
-            y2 *= layout.size[1] / init_layout.size[1];
-            x1 += layout.origin[0];
-            x2 += layout.origin[0];
-            y1 += layout.origin[1];
-            y2 += layout.origin[1];
-            draw_line(x1, y1, x2, y2, 3., macroquad::color::BLACK);
-        }
-    }
     //' A regular hexagonal grid is drawn over the shape.
     //' If the center of a cell falls inside the shape, it's included in the map.
     //' The grid is then moved around so as to minimise certain metrics, with the aim of

@@ -2,7 +2,11 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Player, VictoryCondition};
+use crate::game;
+use game::{VictoryCondition};
+
+use crate::world;
+use world::Player;
 
 #[derive(Serialize, Deserialize)]
 pub struct Ruleset {

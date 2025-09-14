@@ -4,18 +4,27 @@ use serde::Deserialize;
 use serde::Serialize;
 use strum::Display;
 
-use crate::cli::Cli;
+use crate::fog;
+use fog::Fog;
+
+use crate::cli;
+use cli::Cli;
+
+use crate::world;
+use world::Command;
+
+use crate::map_editor;
+use map_editor::Editor;
+
 use crate::rules::Ruleset;
-use crate::ui;
+// use crate::ui;
 use crate::Assets;
+use crate::AssetProvider;
 use crate::Controller;
 use crate::Cube;
-use crate::Fog;
 use crate::Game;
-use crate::Editor;
 use crate::Layout;
 use crate::World;
-use crate::Command;
 use crate::Player;
 
 use core::fmt;
@@ -31,6 +40,7 @@ use std::io::BufReader;
 use std::io::BufWriter;
 use std::io::Read;
 use std::io::Write;
+use std::marker::PhantomData;
 use std::net::TcpListener;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
@@ -68,57 +78,11 @@ trait NotOffline {}
 impl NotOffline for ClientMode {}
 impl NotOffline for ServerMode {}
 
-pub struct App<M: Mode, T: Component> {
+pub struct App<M: Mode, A: AssetProvider, T: Component<A>> {
     pub component: T,
     pub endpoint: M::Endpoint,
+    _marker: std::marker::PhantomData<A>,
 }
-
-impl<M: Mode + 'static> App<M, Game>
-where 
-    M: NotOffline, 
-    Game: Component, 
-    <M as Mode>::Endpoint: 'static,
-    App<M, Game>: Component,
-{
-    pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Box<dyn Component> {
-        let replacement: Box<dyn Chat> = Box::new(Offline);
-        // let endpoint = Client::new("").unwrap().into();
-        let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
-        let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
-
-        let players_map = std::mem::take(&mut ui.players);
-        let players: Vec<Player> = players_map.into_values().collect();
-        let mut world = std::mem::take(&mut ui.mapgen_map).unwrap();
-        let rules = Ruleset::from(ui);
-        let mut component = Game::new(players, world, rules, assets);
-
-        let app = Box::new( Self {component, endpoint} );
-        
-        println!("init complete!");
-        app
-    }
-}
-
-impl App<Offline, Game>
-where 
-    Game: Component, 
-{
-    pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Box<dyn Component> {
-        let players_map = std::mem::take(&mut ui.players);
-        let players: Vec<Player> = players_map.into_values().collect();
-        //let rules = Ruleset::default(ui.victory_condition, &players); // or empty vector?
-        let mut world = std::mem::take(&mut ui.mapgen_map).unwrap();
-        let rules = Ruleset::from(ui);
-        // let mut world = ui.mapgen_map.unwrap();
-        let mut component = Game::new(players, world, rules, assets);
-
-        let app= Box::new(component);
-
-        println!("init complete!");
-        app
-    }
-}
-
 
 // impl<M: Mode> App<M, Game> {
 //     pub fn from_ui(mut ui: ui::Ui, assets: &mut Assets) -> Self where <M as Mode>::Endpoint: 'static {
@@ -148,11 +112,12 @@ where
 //     }
 // }
 
-impl<M: Mode<Endpoint = M>, T: Component> App<M, T> {
+impl<M: Mode<Endpoint = M>, A: AssetProvider, T: Component<A>> App<M, A, T> {
     pub fn new(component: T, endpoint: M) -> Self {
-        Self {component, endpoint}
+        let _marker = PhantomData::default();
+        Self {component, endpoint, _marker}
     }
-    pub fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32) {
+    pub fn draw(&self, layout: &Layout<f32>, assets: &A, time: f32) {
         self.component.draw(layout, assets, time)
     }
 }
@@ -239,7 +204,7 @@ impl<M: Mode<Endpoint = M>, T: Component> App<M, T> {
 //     }
 // }
 
-impl App<ClientMode, Game> {
+impl<A: AssetProvider> App<ClientMode, A, Game> {
     pub fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
         crate::poll_inputs(&mut self.component, Some(&self.endpoint), layout)
     }
@@ -299,7 +264,9 @@ impl App<ClientMode, Game> {
     }
 }
 
-impl App<ServerMode, Game> {
+impl<A: AssetProvider> App<ServerMode, A, Game> where
+    Game: Component<A>,
+{
     pub fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
         self.component.poll(layout)
     }
@@ -432,7 +399,7 @@ impl App<ServerMode, Game> {
     }
 }
 
-impl<M: Mode> App<M, Editor> {
+impl<M: Mode, A: AssetProvider> App<M, A, Editor> {
     pub fn update(mut self) {}
 }
 
@@ -559,23 +526,23 @@ impl IntoAny for Editor {
 }
 
 // impl<M: Mode, T: Component> AsAny for App<M, T> {
-impl AsAny for App<Offline, Game> {
+impl<A: AssetProvider + 'static> AsAny for App<Offline, A, Game> {
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
-impl IntoAny for App<Offline, Game> {
+impl<A: AssetProvider + 'static> IntoAny for App<Offline, A, Game> {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
 }
 
-impl AsAny for App<Offline, Editor> {
+impl<A: AssetProvider + 'static> AsAny for App<Offline, A, Editor> {
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
-impl IntoAny for App<Offline, Editor> {
+impl<A: AssetProvider + 'static> IntoAny for App<Offline, A, Editor> {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
 }
 
@@ -700,8 +667,8 @@ impl Command {
 //     }
 // }
 
-impl App<ClientMode, Game> {
-    pub fn new<A: std::net::ToSocketAddrs + core::fmt::Display>(mut game: Game, addr: A) -> Result<Self, std::io::Error> {
+impl<A: AssetProvider> App<ClientMode, A, Game> {
+    pub fn new<Addr: std::net::ToSocketAddrs + core::fmt::Display>(mut game: Game, addr: Addr) -> Result<Self, std::io::Error> {
         let client = Client::new(addr)?;
 
         let n = random::<usize>() % 100;
@@ -718,7 +685,7 @@ impl App<ClientMode, Game> {
         game.turn = turn;
         println!("Game state received...");
 
-        Ok(Self{component: game, endpoint: client})
+        Ok(Self{component: game, endpoint: client, _marker: PhantomData::default()})
 
         //Ok(Self{player: Player::new("default", None), component, stream})
         // if let Ok(stream) = TcpStream::connect(addr) {
@@ -741,7 +708,7 @@ impl core::fmt::Display for ServerResponseError {
 impl std::error::Error for ServerResponseError {}
 
 
-impl App<ClientMode, Game> {
+impl<A: AssetProvider> App<ClientMode, A, Game> {
     pub fn send_command(&mut self, command: Command) -> Result<Command, std::io::Error>{
         let message = Message::Command(command);
         write_json_message(&self.endpoint.stream, &message);
@@ -767,13 +734,13 @@ impl App<ClientMode, Game> {
 //     fn update(&mut self);
 //     fn swap(self) -> Self::Swap; //impl Component;
 // }
-pub trait Component: IntoAny {
+pub trait Component<A: AssetProvider>: IntoAny {
     // type Swap: Component;
     fn poll(&mut self, layout: &mut Layout<f32>) -> bool;
-    fn draw(&self, layout: &Layout<f32>, assets: &Assets, time: f32);
+    fn draw(&self, layout: &Layout<f32>, assets: &A, time: f32);
     fn update(&mut self);
     // fn swap(self) -> Self::Swap; //Box<dyn Component>;//impl Component;
-    fn swap(self: Box<Self>) -> Box<dyn Component>;//Box<dyn Component>;//impl Component;
+    fn swap(self: Box<Self>) -> Box<dyn Component<A>>;//Box<dyn Component>;//impl Component;
     // fn empty() -> Self;
 }
 

@@ -1,8 +1,10 @@
 pub mod gen;
+use crate::cubic;
+use crate::ai;
 
-use crate::Cube;
-use crate::DIRECTIONS;
-use crate::AI;
+use cubic::Cube;
+use cubic::DIRECTIONS;
+use ai::AI;
 
 use std::char::MAX;
 use std::collections::HashSet;

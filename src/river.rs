@@ -4,12 +4,10 @@
 // the position (1, -0.5, 0.5) is chosen based on {(1, 0, 1) + (1, -1, 0)} / 2
 // this is stored as CubeSide(int: (1, 0, 0), half: (false, true, true), sign: (true, false, true))
 
-use macroquad::miniquad::start;
 use rand::seq::index::sample;
 
-use crate::Cube;
-use crate::DIRECTIONS;
-use crate::REV_DIRECTIONS;
+use crate::cubic;
+use cubic::{Cube, DIRECTIONS, REV_DIRECTIONS};
 
 use std::collections::HashSet;
 use std::ops::Add;

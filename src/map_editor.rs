@@ -1,8 +1,17 @@
-use crate::{cubic::{self, Layout}, game::VictoryCondition, inputs::{draw_tile_selector, poll_inputs, poll_map_editor_inputs}, mquad::*, network::{AsAny, IntoAny}, rules::Ruleset, world::{Locality, Player, TileCategory}, Component, Fog, VisibilityMask};
+use crate::{cubic::{self, Layout}, AssetProvider};
+use crate::game;
+
+use game::VictoryCondition;
+
+use crate::{network::{AsAny, IntoAny, Component}, rules::Ruleset, world::{Locality, Player, TileCategory}};
+
+use crate::fog;
+use fog::{Fog, VisibilityMask};
+
+// use crate::inputs::{poll_map_editor_inputs};
 
 use std::{collections::{HashMap, HashSet}, fs::{OpenOptions, File}};
 use std::slice::Iter;
-use macroquad::prelude::*;
 
 use serde::{Serialize, Deserialize};
 use strum::IntoEnumIterator;
@@ -115,7 +124,7 @@ impl RemoveItem for TileCategory {
 
 impl Editor {
     pub fn new(world: World, players: Vec<Player>) -> Self {
-        let rules = Ruleset::default(crate::VictoryCondition::Elimination, &players);
+        let rules = Ruleset::default(VictoryCondition::Elimination, &players);
         Editor{world, brush: Brush::default(), players, player_views: HashMap::new(), rules}
     }
     pub fn to_json(&self, path: &str) {
@@ -197,18 +206,19 @@ impl Editor {
 //     Editor::new()
 // }
 
-impl crate::Component for Editor {
+impl<A: AssetProvider> Component<A> for Editor {
     // type Swap = crate::Game;
-    fn draw(&self, &layout: &Layout<f32>, assets: &Assets, time: f32) {
-        crate::draw_editor(&self, &layout, assets, time);
+    fn draw(&self, &layout: &Layout<f32>, assets: &A, time: f32) {
+        // crate::draw_editor(&self, &layout, assets, time);
     }
     fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-        crate::poll_map_editor_inputs(self, layout)
+        true
+        // crate::poll_map_editor_inputs(self, layout)
     }
     // fn swap(self) -> Self::Swap{
     //     crate::Game::from(self)
     // }
-    fn swap(self: Box<Self>) -> Box<dyn Component> {
+    fn swap(self: Box<Self>) -> Box<dyn Component<A>> {
         Box::new(crate::Game::from(*self))
     }
     // fn swap(self) -> impl Component + IntoAny {
@@ -276,33 +286,4 @@ impl World {
         // }
         
     }
-}
-
-// pub async fn run_editor(world: &World, layout: &Layout<f32>, assets: &Assets, time: f32) {
-pub async fn run_editor(assets: &Assets) {
-
-    let mut editor = Editor::new(World::new(), vec!());
-
-    let size = [32.,32.];
-    // let size = [0.1,0.1]; // use this if in local coords
-    let origin = [300., 300.];//[100.,600.];//[100.,300.];
-    let mut layout = cubic::Layout{orientation: cubic::OrientationKind::Flat(cubic::FLAT), size, origin};
-
-    let mut time = 0.0;
-
-    loop {
-        clear_background(DARKGRAY);
-
-        poll_map_editor_inputs(&mut editor, &mut layout);
-
-        if is_key_pressed(KeyCode::F1) {
-            break
-        }
-
-        draw_editor(&editor, &layout, &assets, time);
-
-        next_frame().await;
-        time += get_frame_time();
-    }
-    
 }

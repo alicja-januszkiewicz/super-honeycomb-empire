@@ -3,14 +3,7 @@ use std::alloc::Layout;
 use std::collections::HashSet;
 use dsl::pda;
 use hashbrown::HashMap;
-use iced_macroquad::iced::theme::Palette;
-// use iced_macroquad::iced::advanced::Renderer;
-use iced_macroquad::iced::widget::image;
-use iced_macroquad::iced::widget::image::Handle;
-use iced_macroquad::iced::Alignment::Center;
-use macroquad::miniquad::conf::Platform;
-// use iced_macroquad::iced::raw::Element;
-// use iced_macroquad::iced::raw::Element;
+
 // use pda::*;
 use pda::PushdownAutomaton;
 use strum::{AsStaticRef, EnumCount, IntoEnumIterator};
@@ -22,15 +15,24 @@ use crate::network::{Chat, ChatMsg, Client, Component, EndpointType, Mode, Offli
 use crate::rules::Ruleset;
 use crate::world::r#gen::{CapitalsGen, LocalitiesGen, RiverGen, ShapeGen};
 use crate::world::Player;
-use crate::{next_frame, vec2, Vec2, FONT};
+use crate::FONT;
 
-use iced_macroquad::{Interface};
-use iced_macroquad::iced::{Color, Element, Length, Theme};
-use iced_macroquad::iced::{font, font::Font};
-use iced_macroquad::iced::widget::{container, Button, Checkbox, Column, Container, Renderer, Row, Text};
-use iced_macroquad::iced::widget::{button, row, column, text, center, checkbox, text_input, scrollable, pick_list};
+use iced::Alignment::Center;
+use iced::{Color, Element, Length};
+use iced::{font, font::Font};
+use iced::theme::{Theme, Palette};
+use iced::widget::{container, Button, Checkbox, Column, Container, Renderer, Row, Text};
+use iced::widget::{button, row, column, text, center, checkbox, text_input, scrollable, pick_list};
+use iced::widget::scrollable::{Scrollable, Direction};
 
-use macroquad::prelude::*;
+// use crate::{next_frame, vec2, Vec2};
+
+// use iced_macroquad::{Interface};
+// use iced_macroquad::iced::widget::image;
+// use iced_macroquad::iced::widget::image::Handle;
+// use macroquad::miniquad::conf::Platform;
+
+// use macroquad::prelude::*;
 
 trait UiScale {
     fn x(self) -> f32;
@@ -52,8 +54,6 @@ impl UiScale for f32 {
         let w = screen_width() / 2560.0;
         self * h * w *2.
     }}
-
-use iced_macroquad::iced::widget::scrollable::{Scrollable, Direction};
 
 trait HorizontalScroll<'a, Message: 'a> {
     fn horizontal(self) -> Scrollable<'a, Message>;
@@ -1002,3 +1002,53 @@ pub fn test_ui() {
 //         }
 //     }
 // }
+
+
+impl<M: Mode + 'static, A: AssetProvider> App<M, A, Game>
+where 
+    M: NotOffline, 
+    Game: Component<A>, 
+    <M as Mode>::Endpoint: 'static,
+    App<M, A, Game>: Component<A>,
+{
+    pub fn from_ui(mut ui: ui::Ui) -> Box<dyn Component<A>> {
+        let replacement: Box<dyn Chat> = Box::new(Offline);
+        // let endpoint = Client::new("").unwrap().into();
+        let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
+        let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
+
+        let players_map = std::mem::take(&mut ui.players);
+        let players: Vec<Player> = players_map.into_values().collect();
+        let mut world = std::mem::take(&mut ui.mapgen_map).unwrap();
+        let rules = Ruleset::from(ui);
+        let mut component = Game::new(players, world, rules);
+        // component.init_world();
+
+        let _marker = PhantomData::default();
+        let app = Box::new( Self {component, endpoint, _marker} );
+        
+        println!("init complete!");
+        app
+    }
+}
+
+impl<A: AssetProvider> App<Offline, A, Game>
+where 
+    Game: Component<A>,
+{
+    pub fn from_ui(mut ui: ui::Ui) -> Box<dyn Component<A>> {
+        let players_map = std::mem::take(&mut ui.players);
+        let players: Vec<Player> = players_map.into_values().collect();
+        //let rules = Ruleset::default(ui.victory_condition, &players); // or empty vector?
+        let mut world = std::mem::take(&mut ui.mapgen_map).unwrap();
+        let rules = Ruleset::from(ui);
+        // let mut world = ui.mapgen_map.unwrap();
+        let mut component = Game::new(players, world, rules);
+
+        let app= Box::new(component);
+
+        println!("init complete!");
+        app
+    }
+}
+

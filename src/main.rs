@@ -16,6 +16,7 @@ mod rules;
 mod network;
 mod cli;
 mod ui;
+mod renderer;
 
 use clap::Parser;
 use fog::*;
@@ -37,6 +38,27 @@ use mquad::*;
 // use macroquad::{file::load_file, miniquad::fs::load_file, prelude::*};
 use macroquad::{file::load_file, prelude::*};
 use dbase;
+
+pub struct Assets<F: FontHandle, T: TextureHandle, M: MaterialHandle> {
+    pub locality_names: Vec<String>,
+    pub font: F,
+    pub army: T,
+    pub port: T,
+    pub airport: T,
+    pub fields: T,
+    pub water_material: M,
+    pub init_layout: Layout<f32>,
+    pub shape: Vec<(f32, f32)>,
+    pub river: Vec<(usize, f32, f32)>,
+}
+
+pub trait AssetProvider {
+    type Font: FontHandle;
+    type Texture: TextureHandle;
+    type Material: MaterialHandle;
+
+    fn assets(&self) -> &Assets<Self::Font, Self::Texture, Self::Material>;
+}
 
 const WATER_FRAGMENT_SHADER: &'static str = include_str!("../assets/water_fragment_shader.glsl");
 const WATER_VERTEX_SHADER: &'static str = include_str!("../assets/water_vertex_shader.glsl");
@@ -85,7 +107,7 @@ fn load_rivers(shape: &Vec<(f32, f32)>) -> Vec<(usize, f32, f32)> {
     river
 }
 
-async fn load_assets() -> Assets {
+fn load_resources() -> GameResources {
     // let mut reader = dbase::Reader::from_path("assets/ua_shp/ukr_admbnda_adm0_sspe_20230201.dbf").unwrap();
     // let f = File::open("assets/cities.json").expect("file should open read only");
     let f = include_bytes!("../assets/cities.json");
@@ -94,6 +116,57 @@ async fn load_assets() -> Assets {
     // let locality_names = locality_names_v.iter().map(String::as_str).collect();
     // let locality_names: Vec<&str> = locality_names_v.iter().map(|s| &**s).collect();
 
+    let size = [32.,32.];
+    let origin = [0., 0.];
+    let init_layout = cubic::Layout{orientation: cubic::OrientationKind::Flat(cubic::FLAT), size, origin};
+
+        //let shape = vec!((300.,10.), (1000., 100.), (1000., 500.), (5000., 500.), (5000., 100.), (300., 10.));
+    //let v: serde_json::Value = serde_json::from_str(data).unwrap();
+    // let shape: Vec<(f32, f32)> = serde_json::from_str(data).unwrap();
+    // Open the CSV file
+    // std::fs::create_dir_all("assets/shapes");
+    let vertices = shapefiles::extract_vertices("assets/ua_shp/ukr_admbnda_adm0_sspe_20230201.shp").unwrap();
+    // let file = File::open("assets/shapes/ua-100k_v2.csv").unwrap();
+    // let mut rdr = csv::Reader::from_reader(file);
+    // let file = load_file(path);
+
+    // Create a Vec<(f32, f32)> to store the data
+    let mut shape: Vec<(f32, f32)> = Vec::new();
+
+    // Iterate over each record in the CSV and parse the values
+    for idx in 0..vertices.0.len() {
+        let first_value = vertices.0.get(idx).unwrap();//row.get(0).unwrap();
+        let second_value = vertices.1.get(idx).unwrap(); //row.get(1).unwrap();
+        let vertex_part = vertices.2.get(idx).unwrap(); //row.get(2).unwrap().round() as i32;
+        // when using qgis-derived file
+        // let vertex_part: i32 = record.get(12).unwrap().parse().unwrap();
+        // let vertex_part_ring: i32 = record.get(13).unwrap().parse().unwrap();
+
+        let r = 6371000.0 / 750.; //1:250 is nearly max
+        let y = r * ((std::f32::consts::PI/4.) + (second_value.to_radians()/2.)).tan().ln();
+        let x = r * first_value.to_radians();
+        
+        if *vertex_part == 158 {//&& vertex_part_ring == 0 { // include rhs when using qgis-derived file
+            // shape.push((first_value * r, second_value*(-1.) * r));
+            shape.push((x, y * -1.));
+        }
+        //  if idx > 50000 {break}
+    }
+
+    // let river = load_rivers(&shape);
+    let river = vec![];
+
+    //println!("{:?}", shape);
+    //let shape = vec!((0.,0.), (500., -950.), (1000., 0.), (1000.,-1000.), (500., -950.), (0.,-1000.));
+    // let shape = vec!((0.,0.), (1000., 0.), (1000.,-1000.), (0.,-1000.));
+    // let (min_x, min_y) = shape.iter().fold(0., |init: f32, (x, y)| (init.min(x), init.min(y)));
+    // let min_x = shape.iter().fold(0., |init: f32, (x, y)| init.min(*x));
+    // let min_y = shape.iter().fold(0., |init: f32, (x, y)| init.min(*y));
+
+    GameResources {locality_names, init_layout, shape, river}
+}
+
+async fn load_assets(init_layout: Layout<i32>) -> Assets {
     let font = load_ttf_font_from_bytes(FONT).unwrap();
     // let font = load_ttf_font("assets/Iceberg-Regular.ttf").await.unwrap();
     // let army = Texture2D::from_file_with_format(
@@ -137,55 +210,11 @@ async fn load_assets() -> Assets {
             ..Default::default()
         },
     ).unwrap();
-    let size = [32.,32.];
-    let origin = [0., 0.];
-    let init_layout = cubic::Layout{orientation: cubic::OrientationKind::Flat(cubic::FLAT), size, origin};
-    
+
     water_material.set_uniform("RectSize", (init_layout.size[0], init_layout.size[1]));
-    //let shape = vec!((300.,10.), (1000., 100.), (1000., 500.), (5000., 500.), (5000., 100.), (300., 10.));
-    //let v: serde_json::Value = serde_json::from_str(data).unwrap();
-    // let shape: Vec<(f32, f32)> = serde_json::from_str(data).unwrap();
-    // Open the CSV file
-    // std::fs::create_dir_all("assets/shapes");
-    let vertices = shapefiles::extract_vertices("assets/ua_shp/ukr_admbnda_adm0_sspe_20230201.shp").unwrap();
-    // let file = File::open("assets/shapes/ua-100k_v2.csv").unwrap();
-    // let mut rdr = csv::Reader::from_reader(file);
-    // let file = load_file(path);
 
-    // Create a Vec<(f32, f32)> to store the data
-    let mut shape: Vec<(f32, f32)> = Vec::new();
 
-    // Iterate over each record in the CSV and parse the values
-    for idx in 0..vertices.0.len() {
-        let first_value = vertices.0.get(idx).unwrap();//row.get(0).unwrap();
-        let second_value = vertices.1.get(idx).unwrap(); //row.get(1).unwrap();
-        let vertex_part = vertices.2.get(idx).unwrap(); //row.get(2).unwrap().round() as i32;
-        // when using qgis-derived file
-        // let vertex_part: i32 = record.get(12).unwrap().parse().unwrap();
-        // let vertex_part_ring: i32 = record.get(13).unwrap().parse().unwrap();
-
-        let r = 6371000.0 / 750.; //1:250 is nearly max
-        let y = r * ((std::f32::consts::PI/4.) + (second_value.to_radians()/2.)).tan().ln();
-        let x = r * first_value.to_radians();
-        
-        if *vertex_part == 158 {//&& vertex_part_ring == 0 { // include rhs when using qgis-derived file
-            // shape.push((first_value * r, second_value*(-1.) * r));
-            shape.push((x, y * -1.));
-        }
-        //  if idx > 50000 {break}
-    }
-
-    // let river = load_rivers(&shape);
-    let river = vec![];
-
-    //println!("{:?}", shape);
-    //let shape = vec!((0.,0.), (500., -950.), (1000., 0.), (1000.,-1000.), (500., -950.), (0.,-1000.));
-    // let shape = vec!((0.,0.), (1000., 0.), (1000.,-1000.), (0.,-1000.));
-    // let (min_x, min_y) = shape.iter().fold(0., |init: f32, (x, y)| (init.min(x), init.min(y)));
-    // let min_x = shape.iter().fold(0., |init: f32, (x, y)| init.min(*x));
-    // let min_y = shape.iter().fold(0., |init: f32, (x, y)| init.min(*y));
-
-    Assets{locality_names, font, army, port, airport, fields, water_material, init_layout, shape, river}
+    Assets{font, army, port, airport, fields, water_material}
 }
 
 fn window_conf() -> Conf {

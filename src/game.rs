@@ -18,26 +18,39 @@ use serde::Deserialize;
 use serde::Serialize;
 use strum::EnumString;
 use strum::{EnumIter, Display};
+use wgpu::core::device::resource;
+
+use crate::map_editor;
+use crate::AssetProvider;
+use map_editor::Editor;
+
+use crate::fog;
+use fog::VisibilityMask;
+
+use crate::network;
+use network::{Component, AsAny, IntoAny};
 
 use crate::cubic::*;
-use crate::network::AsAny;
-use crate::network::IntoAny;
 use crate::rules::Ruleset;
-use crate::ui::Ui;
+// use crate::ui::Ui;
 use crate::Army;
-use crate::Component;
 use crate::Controller;
-use crate::Editor;
 use crate::Player;
-use crate::VisibilityMask;
 use crate::World;
-use crate::mquad::Assets;
+use crate::Assets;
 use crate::world::MAX_STACK_SIZE;
 use crate::world::ACTIONS_PER_TURN;
 use crate::world::Command;
 
 use crate::world::TileCategory;
 use crate::world::gen::*;
+
+pub struct GameResources {
+    pub locality_names: Vec<String>,
+    pub init_layout: Layout<f32>,
+    pub shape: Vec<(f32, f32)>,
+    pub river: Vec<(usize, f32, f32)>,
+}
 
 #[derive(Serialize, Deserialize, EnumIter, strum::AsStaticStr, Display, PartialEq, Default)]
 pub enum VictoryCondition {
@@ -103,7 +116,7 @@ impl Game {
             }
         }
     }
-    pub fn new(players: Vec<Player>, world: World, rules: Ruleset, assets: &mut Assets) -> Self {
+    pub fn new(players: Vec<Player>, world: World, rules: Ruleset) -> Self {
         // let world: World = World::new();
         let player_views = HashMap::new();
 
@@ -115,7 +128,7 @@ impl Game {
             rules,
         };
     
-        // Game::init_world(&mut game, assets);
+        // Game::init_world(&mut game, resources);
         game.init_views();
         // Game::init_views(&mut game);
         game
@@ -172,10 +185,10 @@ impl Game {
             None => None,
         }
     }
-    pub fn init_world(game: &mut Self, assets: &mut Assets) {
-        let shape_gen = ShapeGen::Custom(assets.shape.clone());
+    pub fn init_world(game: &mut Self, resources: &mut GameResources) {
+        let shape_gen = ShapeGen::Custom(resources.shape.clone());
         // let shape_gen = ShapeGen::Hexagonal(8);
-        let river_gen = RiverGen::Custom(assets.river.clone());
+        let river_gen = RiverGen::Custom(resources.river.clone());
         // let river_gen = RiverGen::Random(300, 0.3);
         let localities_gen = LocalitiesGen::Random;
         let capitals_gen = CapitalsGen::Random(4);
@@ -184,8 +197,8 @@ impl Game {
             river_gen,
             localities_gen,
             capitals_gen,
-            &mut assets.locality_names.iter().map(|s| &**s).collect(),
-            &assets.init_layout,
+            &mut resources.locality_names.iter().map(|s| &**s).collect(),
+            &resources.init_layout,
         );
         // println!("{}", self.world.len());
         // println!("river (debug): {:?}", self.world.rivers);
@@ -301,10 +314,10 @@ impl Game {
     }
 }
 
-impl crate::Component for Game {
+impl<A: AssetProvider> Component<A> for Game {
     // type Swap = Editor;
-    fn draw(&self, &layout: &Layout<f32>, assets: &Assets, time: f32) {
-        crate::draw(&self, &layout, assets, time);
+    fn draw(&self, &layout: &Layout<f32>, assets: &A, time: f32) {
+        // crate::draw(&self, &layout, assets, time);
     }
     fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
         crate::poll_inputs(self, None, layout)
@@ -312,8 +325,8 @@ impl crate::Component for Game {
     // fn swap(self) -> Self::Swap{//impl Component {
     //     crate::Editor::from(self)
     // }
-    fn swap(self: Box<Self>) -> Box<dyn Component> {
-        Box::new(crate::Editor::from(*self))
+    fn swap(self: Box<Self>) -> Box<dyn Component<A>> {
+        Box::new(Editor::from(*self))
     }
     // fn swap(self) -> impl Component + IntoAny {
     //     crate::Editor::from(self)
