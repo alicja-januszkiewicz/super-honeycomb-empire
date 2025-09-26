@@ -1,6 +1,10 @@
 #![feature(trait_alias)]
 #![allow(warnings)]
+#![feature(const_mut_refs)]
 
+use std::path::Path;
+
+use glyphon::{FontSystem, SwashCache};
 use winit::{
     event::*,
     event_loop::{EventLoop},
@@ -25,23 +29,22 @@ mod map_editor;
 mod fog;
 mod network;
 mod shapefiles;
+mod inputs;
+mod backend;
 
 mod rules;
 use rules::{Ruleset};
 
 mod game;
-use game::{Game, GameResources};
-
-use crate::game::VictoryCondition;
+use game::{Game, GameResources, VictoryCondition};
 
 use network::{Client};
 
+use crate::network::{App, Component};
+
 // stubs for now
 
-
-// struct Client;
-
-pub fn poll_inputs(game: &mut Game, client: Option<&Client>, layout: &mut Layout<f32>) -> bool {true}
+//pub fn poll_inputs(game: &mut Game, client: Option<&Client>, layout: &mut Layout<f32>) -> bool {true}
 
 pub trait FontHandle {}
 pub trait TextureHandle {}
@@ -56,13 +59,17 @@ pub struct Assets<F: FontHandle, T: TextureHandle, M: MaterialHandle> {
     pub water_material: M,
 }
 
-pub trait AssetProvider {
-    type Font: FontHandle;
-    type Texture: TextureHandle;
-    type Material: MaterialHandle;
+// pub trait AssetProvider {
+//     type Font: FontHandle;
+//     type Texture: TextureHandle;
+//     type Material: MaterialHandle;
 
-    fn assets(&self) -> &Assets<Self::Font, Self::Texture, Self::Material>;
-}
+//     fn assets(&self) -> &Assets<Self::Font, Self::Texture, Self::Material>;
+// }
+
+// impl AssetProvider for WgpuAssets {
+//     type Font = FontAsset;
+// }
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
@@ -187,7 +194,78 @@ fn load_resources() -> GameResources {
     GameResources {locality_names, init_layout, shape, river}
 }
 
-struct RealGameState {
+macro_rules! font_asset {
+    ($name:literal, $path:literal) => {
+        FontAsset {
+            name: $name,
+            bytes: include_bytes!($path),
+        }
+    };
+}
+
+pub struct FontAsset {
+    pub name: &'static str,
+    pub bytes: &'static [u8], // or Vec<u8> if loading dynamically
+}
+
+// impl FontAsset {
+//     fn new(path: &str) -> Self {
+//         let name = Path::new(path).file_name().unwrap().to_owned().into_string().unwrap();
+//         let bytes = include_bytes!(path.to_owned());
+//         Self {name, bytes}
+//     }
+// }
+
+pub trait FontProvider {
+    type Font;
+    fn get_font(&self, id: &str) -> &Self::Font;
+}
+
+pub trait TextureProvider {
+    type Texture;
+    fn get_texture(&self, id: &str) -> &Self::Texture;
+}
+
+pub trait MaterialProvider {
+    type Material;
+    fn get_material(&self, id: &str) -> &Self::Material;
+}
+
+
+
+// pub trait AssetProvider:
+//     FontProvider + TextureProvider + MaterialProvider {}
+
+
+impl FontProvider for WgpuAssets {
+    type Font = FontSystem;
+    fn get_font(&self, id: &str) -> &Self::Font {
+        &self.font_system
+    }
+}
+
+// impl<T> AssetProvider for T where
+//     T: FontProvider + TextureProvider + MaterialProvider {}
+
+fn load_assets() -> WgpuAssets {
+    // let font = FontAsset::new("../assets/Iceberg-Regular.ttf")
+    let font = font_asset!("Iceberg-Regular", "../assets/Iceberg-Regular.ttf");
+    let mut font_system = FontSystem::new();
+    // let data = include_bytes!("../assets/Iceberg-Regular.ttf");
+    let face_id = font_system.db_mut().load_font_data(font.bytes.into());
+    WgpuAssets{font_system}
+}
+
+
+impl FontHandle for FontAsset {}
+
+struct WgpuAssets {
+    font_system: FontSystem,
+    // put wgpu pipeline handles, textures, fonts here
+}
+
+
+struct RealGameState<A> {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
@@ -199,8 +277,8 @@ struct RealGameState {
     uniform_bind_group: wgpu::BindGroup,
     camera: Camera,
     
-    // Your actual game data
-    game: Game,
+    //game: Game,
+    app: Box<dyn Component<A>>,
     // layout: Layout<f32>,
     vertices: Vec<Vertex>,
     indices: Vec<u16>,

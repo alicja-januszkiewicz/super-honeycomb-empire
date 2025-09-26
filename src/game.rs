@@ -20,8 +20,12 @@ use strum::EnumString;
 use strum::{EnumIter, Display};
 use wgpu::core::device::resource;
 
+use crate::backend;
+use crate::network::Message;
+use backend::Backend;
+
+use crate::inputs::InputState;
 use crate::map_editor;
-use crate::AssetProvider;
 use map_editor::Editor;
 
 use crate::fog;
@@ -30,6 +34,9 @@ use fog::VisibilityMask;
 use crate::network;
 use network::{Component, AsAny, IntoAny};
 
+use crate::inputs;
+use inputs::poll_inputs;
+
 use crate::cubic::*;
 use crate::rules::Ruleset;
 // use crate::ui::Ui;
@@ -37,7 +44,6 @@ use crate::Army;
 use crate::Controller;
 use crate::Player;
 use crate::World;
-use crate::Assets;
 use crate::world::MAX_STACK_SIZE;
 use crate::world::ACTIONS_PER_TURN;
 use crate::world::Command;
@@ -314,25 +320,99 @@ impl Game {
     }
 }
 
-impl<A: AssetProvider> Component<A> for Game {
+impl<B: Backend> Component<B> for Game {
     // type Swap = Editor;
-    fn draw(&self, &layout: &Layout<f32>, assets: &A, time: f32) {
-        // crate::draw(&self, &layout, assets, time);
+    fn draw(&self, &layout: &Layout<f32>, backend: &B, resources: &GameResources, time: f32) {
+        //pub fn draw(game: &Game, &layout: &Layout<f32>, assets: &Assets, resources: &GameResources, time: f32) {
+        let darkgrey = [0.31f32, 0.31, 0.31, 1.0].into();
+        let black = [0.0f32, 0.0, 0.0, 1.0].into();
+        B::clear(darkgrey);
+
+        let view = self.current_player_index()
+            .and_then(|pid| self.player_views.get(&pid))
+            .unwrap_or(&self.world);
+
+        // B::draw_base_tiles(view, &layout, &assets, time);
+        // B::draw_game_tiles(view, &layout, &assets);
+        backend.draw_base_tiles(view, &layout, time);
+        backend.draw_game_tiles(view, &layout);
+
+        let has_selection = self.current_player().is_some_and(|p| p.selection.is_some());
+        if has_selection {
+            B::draw_army_legal_moves(&self, &layout);
+        } else {
+            B::draw_army_can_move_indicator(&self, &layout);
+        }
+
+        B::draw_army_info(&self.world, &layout);
+
+        B::draw_fps_counter(50., 50., 40., black);
+        B::draw_map_control_summary(self);
+
+        for cs in &self.world.rivers {
+            B::draw_river(&cs, &layout);
+        }
+
+        let mut shape = resources.river.clone();
+        let COLORS = vec!(black);
+        // let COLORS = vec!(BEIGE, BLACK, BLUE, BROWN, GOLD, GREEN, LIME, MAGENTA, MAROON, ORANGE, PINK, PURPLE, RED, VIOLET, WHITE, YELLOW,);
+
+        for j in 1..shape.len() {
+            let (id, mut x, mut y) = shape[j];
+            x *= layout.size[0] / resources.init_layout.size[0];
+            y *= layout.size[1] / resources.init_layout.size[1];
+            x += layout.origin[0];
+            y += layout.origin[1];
+            let color = COLORS[j % COLORS.len()];
+            B::draw_circle(x, y, 8., color);
+        }
     }
-    fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-        crate::poll_inputs(self, None, layout)
+    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Message {
+        let mut message = backend.poll_inputs(layout);
+
+        // Potentially overwrite the previous command; 1 input per frame allowed, clicking takes precedence.
+        if let Some(cube) = backend.poll_click_inputs(layout) {
+            if let Some(_) = self.world.get(&cube) {
+                if let Some(command) = self.click(&cube) {
+                    message = Message::Command(command)
+                }
+            }
+        }
+                            
+        message
     }
-    // fn swap(self) -> Self::Swap{//impl Component {
-    //     crate::Editor::from(self)
-    // }
-    fn swap(self: Box<Self>) -> Box<dyn Component<A>> {
-        Box::new(Editor::from(*self))
-    }
-    // fn swap(self) -> impl Component + IntoAny {
-    //     crate::Editor::from(self)
-    // }
-    fn update(&mut self) {
-        self._update()
+
+    fn update(mut self: Box<Self>, message: Message) -> Option<Box<dyn Component<B>>> {
+        self._update();
+
+        let swap = match message {
+            Message::Command(command) => {
+                self.execute_command(&command);
+                self as Box<dyn Component<B>>
+            },
+            Message::Save => {
+                std::fs::create_dir_all("assets/saves");
+                self.to_json("assets/saves/quicksave.json");
+                self
+            },
+            Message::Load => {
+                std::fs::create_dir_all("assets/saves");
+                *self = Game::from_json("assets/saves/quicksave.json");
+                self
+            },
+            Message::SkipTurn => {
+                self.current_player_index().map(|i| self.players[i].skip_turn());
+                self
+            },
+            Message::Swap => {
+                Box::new(Editor::from(*self)) as Box<dyn Component<B>>
+                // swap = Some(self as Box<dyn Component<B>>);
+            }
+            _ => {self}
+        };
+
+        Some(swap)
+
     }
     // fn empty() -> Self {
     //     let players = vec!();
@@ -389,3 +469,4 @@ impl<A: AssetProvider> Component<A> for Game {
 //     game.current_player.actions = 0
 //     while len(game.players) > 1:
 //         game.update_world()
+

@@ -1,4 +1,4 @@
-use crate::{cubic::Layout, game::Game, network::Component, river::CubeSide, world::World};
+use crate::{cubic::Layout, game::{Game, GameResources}, network::{Component, Message}, river::CubeSide, world::World};
 
 #[cfg(feature="wgpu")]
 mod wgpu;
@@ -20,7 +20,7 @@ pub struct Color { pub r: f32, pub g: f32, pub b: f32, pub a: f32 }
 
 pub trait Backend {
     // type Event;
-    type Assets;
+    // type Assets;
 
     fn new(init_layout: Layout<f32>) -> Self;
 
@@ -30,7 +30,9 @@ pub trait Backend {
         F: 'static + FnMut(&mut Self, f32) -> bool;
 
     //fn poll_events<F: FnMut()> (event: F);
-    fn poll_inputs(game: Box<Game>, client: Option<&crate::Client>, layout: &mut Layout<f32>) -> (bool, Option<Box<dyn Component<Self>>>);
+    fn poll_inputs(&self, layout: &mut Layout<f32>) -> Message;
+    fn poll_click_inputs(&self, layout: &mut Layout<f32>) -> Option<crate::cubic::Cube<i32>>;
+    fn poll_right_click_inputs(&self, layout: &mut Layout<f32>) -> Option<crate::cubic::Cube<i32>>;
 
     // fn assets(&self) -> &Self::Assets;
     // fn assets_mut(&mut self) -> &mut Self::Assets;
@@ -58,6 +60,8 @@ pub trait Backend {
     fn draw_river(segment: &CubeSide, layout: &Layout<f32>);
     fn draw_circle(x: f32, y: f32, r: f32, color: Color);
 
+    async fn get_map_thumbnail(&self, world: &crate::World, width: f32, height: f32, resources: &GameResources) -> Vec<u8>;
+
     // Resource creation
     // fn create_texture(&mut self, data: &[u8], size: [u32; 2]) -> Result<TextureId, BackendError>;
     // fn create_font(&mut self, ttf_bytes: &[u8]) -> Result<FontId, BackendError>;
@@ -76,4 +80,28 @@ pub trait Backend {
 // #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 // pub struct FontId(u32);
 
+pub fn draw_thumb<B: Backend>(world: &World, &layout: &Layout<f32>, backend: &B, resources: &GameResources, time: f32) {
+    macroquad::prelude::clear_background(macroquad::prelude::DARKGRAY);
 
+    backend.draw_base_tiles(&world, &layout, time);
+    backend.draw_game_tiles(&world, &layout);
+
+    for cs in &world.rivers {
+        B::draw_river(&cs, &layout);
+    }
+
+    let mut shape = resources.river.clone();
+
+    // let COLORS = vec!(BEIGE, BLACK, BLUE, BROWN, GOLD, GREEN, LIME, MAGENTA, MAROON, ORANGE, PINK, PURPLE, RED, VIOLET, WHITE, YELLOW,);
+    let COLORS = vec!([122.,122.,122.,122.].into());
+
+    for j in 1..shape.len() {
+        let (id, mut x, mut y) = shape[j];
+        x *= layout.size[0] / resources.init_layout.size[0];
+        y *= layout.size[1] / resources.init_layout.size[1];
+        x += layout.origin[0];
+        y += layout.origin[1];
+        let color = COLORS[j % COLORS.len()];
+        B::draw_circle(x, y, 8., color);
+    }
+}

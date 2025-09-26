@@ -3,18 +3,20 @@ mod input;
 
 extern crate macroquad;
 
+use macroquad::camera::{set_camera, set_default_camera, Camera2D};
 use macroquad::color::{*};
-use macroquad::input::mouse_position;
-use macroquad::math::Vec2;
+use macroquad::input::{mouse_position, is_mouse_button_pressed};
+use macroquad::math::{Rect, Vec2};
 use macroquad::prelude::{Conf, MaterialParams, UniformType, UniformDesc, ShaderSource, Texture2D};
 use macroquad::prelude::{get_frame_time, load_material, gl_use_material, gl_use_default_material, get_fps, load_ttf_font_from_bytes, set_pc_assets_folder};
 use macroquad::shapes::{draw_circle, draw_hexagon, draw_rectangle};
 use macroquad::text::draw_text;
-use macroquad::texture::{draw_texture_ex, DrawTextureParams};
+use macroquad::texture::{draw_texture_ex, render_target, DrawTextureParams};
 use macroquad::window::next_frame;
 
-use crate::game::Game;
-use crate::network::Component;
+use crate::backend::mquad::input::KeyMapper;
+use crate::game::{Game, GameResources};
+use crate::network::{Component, Message};
 use crate::world::{self, LocalityCategory};
 use world::TileCategory;
 
@@ -140,6 +142,7 @@ impl From<backend::Color> for macroquad::prelude::Color {
 pub struct Macroquad {
     assets: Option<Assets>,
     init_layout: Layout<f32>,
+    key_mapper: KeyMapper,
 }
 
 impl Macroquad {
@@ -152,10 +155,11 @@ impl Macroquad {
 }
 
 impl Backend for Macroquad {
-    type Assets = Assets;
+    // type Assets = Assets;
     fn new(init_layout: Layout<f32>) -> Self {
         let assets = None;
-        Self { assets, init_layout }
+        let key_mapper = input::KeyMapper::new();
+        Self { assets, init_layout, key_mapper }
     }
     fn run_loop<F>(self, mut f: F)
     where
@@ -180,8 +184,42 @@ impl Backend for Macroquad {
             }
         });
     }
-    fn poll_inputs(game: Box<Game>, client: Option<&crate::Client>, layout: &mut Layout<f32>) -> (bool, Option<Box<dyn Component<Self>>>) {
-        input::poll_inputs(game, client, layout)
+    fn poll_inputs(&self, layout: &mut Layout<f32>) -> Message {
+        input::poll_camera_inputs(layout);
+
+        let mut message = Message::Tick;
+        for action in self.key_mapper.poll() {
+            match action {
+                input::InputAction::CameraPan(delta) => {
+                    layout.origin[0] += delta[0];
+                    layout.origin[1] += delta[1];
+                }
+                input::InputAction::Message(msg) => {
+                    message = msg;
+                }
+                input::InputAction::Click(cube) => {}
+            }
+        }
+
+        message
+    }
+    fn poll_click_inputs(&self, layout: &mut Layout<f32>) -> Option<Cube<i32>> {
+        let mut click = None;
+        if is_mouse_button_pressed(macroquad::input::MouseButton::Left) {
+            let pos = mouse_position().into();
+            let cube = cubic::pixel_to_cube(layout, pos).round::<i32>();
+            click = Some(cube);
+        }
+        click
+    }
+    fn poll_right_click_inputs(&self, layout: &mut Layout<f32>) -> Option<Cube<i32>> {
+        let mut click = None;
+        if is_mouse_button_pressed(macroquad::input::MouseButton::Right) {
+            let pos = mouse_position().into();
+            let cube = cubic::pixel_to_cube(layout, pos).round::<i32>();
+            click = Some(cube);
+        }
+        click
     }
     fn get_frame_time() -> f32 {
         get_frame_time()
@@ -353,5 +391,73 @@ impl Backend for Macroquad {
     }
     fn draw_circle(x: f32, y: f32, r: f32, color: Color) {
         draw_circle(x, y, r, color.into());
+    }
+    /// Function to render a scene to an image
+    async fn get_map_thumbnail(&self, world: &crate::World, width: f32, height: f32, resources: &GameResources) -> Vec<u8> {
+        println!("getting thumb");
+        // let scenario = Game::from_json(path);
+        // let game = Game::from_json(path);
+        // let scenario = game.swap();
+
+        // texture size
+        // let width = 900.0.x(); // 2560;
+        // let height = 900.0.y(); // 1440;
+
+        let mut layout = resources.init_layout.clone();
+
+        // 2a. bounds with the original logical hex size (whatever init_layout is)
+        let (min_x, min_y, max_x, max_y) = world::get_world_bounds(world, &layout);
+        let map_w = max_x - min_x;
+        let map_h = max_y - min_y;
+
+
+        // 2b. uniform scale that preserves aspect ratio
+        let scale = (width / map_w).min(height / map_h);
+
+        layout.size = [
+            resources.init_layout.size[0] * scale,
+            resources.init_layout.size[1] * scale,
+        ];
+
+        // 2c. shift so the (scaled) map is centred in the texture
+        layout.origin = [
+            (width  - map_w * scale) * 0.5 - min_x * scale,
+            (height - map_h * scale) * 0.5 - min_y * scale,
+        ];
+
+        // Create a render target (offscreen texture)
+        let render_target = render_target(width as u32, height as u32);
+
+        let mut render_target_cam = Camera2D::from_display_rect(Rect::new(0., 0., width, height));
+        render_target_cam.render_target = Some(render_target.clone());
+        set_camera(&render_target_cam);
+
+        // Draw something
+        backend::draw_thumb(world, &layout, self, resources, 1.);
+
+        set_default_camera();
+
+        // Retrieve the pixel data
+        let image_data = render_target.texture.get_texture_data();
+
+        // (Optional) Save the image
+        image_data.export_png("output.png");
+
+        //image_data
+        let mut raw_bytes = image_data.bytes;
+        flip_image_vertically(&mut raw_bytes, width as usize, height as usize);
+        raw_bytes
+        //Handle::from_rgba(width as u32, height as u32, raw_bytes) // Convert to Iced Image Handle
+    }
+}
+
+fn flip_image_vertically(raw_bytes: &mut [u8], width: usize, height: usize) {
+    let row_size = width * 4; // 4 bytes per pixel (RGBA)
+    for y in 0..(height / 2) {
+        let top_index = y * row_size;
+        let bottom_index = (height - 1 - y) * row_size;
+        for i in 0..row_size {
+            raw_bytes.swap(top_index + i, bottom_index + i);
+        }
     }
 }

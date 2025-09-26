@@ -6,8 +6,57 @@ generate map => templates, no of players
 
 load existing => file browser
 
-option to edit map before starting
 
-edit scenario settings
-- fog
-- win conditions
+ui::Endpoint (Enum of Client, Server)
+network::Endpoint (Trait)
+
+
+// option 1
+Enum Endpoint<T: Component>
+Client(Client<T>)
+Server(Server<T>)
+Offline(Offline<T>)
+
+// option 2
+
+Enum EndpointType
+Client
+Server
+Offline
+
+Struct Endpoint
+type: EndpointType
+client: Client
+server: Server
+app: Component
+
+// option 3
+
+Enum Endpoint
+Client(Client)
+Server(Server)
+
+Struct App
+endpoint: Option<Endpoint>
+component: Component
+
+
+
+use std::marker::PhantomData;
+
+struct Endpoint<T> {
+    _marker: PhantomData<T>,
+}
+
+struct Client;
+struct Server;
+
+
+impl Endpoint<Client>
+impl Endpoint<Server>
+
+
+App is initialised
+
+app.poll 
+

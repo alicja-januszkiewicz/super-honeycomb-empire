@@ -1,6 +1,8 @@
 pub mod gen;
 use crate::cubic;
 use crate::ai;
+use crate::cubic::Layout;
+use crate::cubic::Pixel;
 
 use cubic::Cube;
 use cubic::DIRECTIONS;
@@ -979,4 +981,21 @@ fn capture_tile(world: &mut World, origin_cube: &Cube<i32>, target_cube: &Cube<i
     world.insert(*origin_cube, origin);
     world.insert(*target_cube, target);
     // move_to(&mut world, origin_cube, target_cube);
+}
+
+/// Returns (min_x, min_y, max_x, max_y) of all tiles in screen space
+pub fn get_world_bounds(world: &World, layout: &Layout<f32>) -> (f32, f32, f32, f32) {
+    let mut min_x = f32::MAX;
+    let mut min_y = f32::MAX;
+    let mut max_x = f32::MIN;
+    let mut max_y = f32::MIN;
+
+    for (cube, _) in world.world.iter() {
+        let Pixel(x, y) = Cube::<f32>::from(*cube).to_pixel(layout);
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    (min_x, min_y, max_x, max_y)
 }

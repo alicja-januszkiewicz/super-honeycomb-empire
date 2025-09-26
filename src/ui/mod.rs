@@ -4,18 +4,26 @@ use std::collections::HashSet;
 use dsl::pda;
 use hashbrown::HashMap;
 
+use crate::backend::{self, Backend};
+
 // use pda::*;
 use pda::PushdownAutomaton;
 use strum::{AsStaticRef, EnumCount, IntoEnumIterator};
 
-use crate::game::{Game, VictoryCondition};
+use crate::game::{Game, GameResources, VictoryCondition};
 use crate::map_editor::Editor;
-use crate::mquad::Assets;
-use crate::network::{Chat, ChatMsg, Client, Component, EndpointType, Mode, Offline, SendChat, Server};
+use crate::network::{App, Chat, ChatMsg, Client, Component, EndpointType, Mode, Offline, SendChat, Server};
 use crate::rules::Ruleset;
 use crate::world::r#gen::{CapitalsGen, LocalitiesGen, RiverGen, ShapeGen};
 use crate::world::Player;
 use crate::FONT;
+
+#[cfg(feature = "wgpu")]
+pub use iced::*;
+
+#[cfg_attr(any(feature="mquad", rust_analyzer), path = "mquad/mod.rs")]
+pub use iced_macroquad::iced;
+pub use iced_macroquad::iced::*;
 
 use iced::Alignment::Center;
 use iced::{Color, Element, Length};
@@ -24,15 +32,37 @@ use iced::theme::{Theme, Palette};
 use iced::widget::{container, Button, Checkbox, Column, Container, Renderer, Row, Text};
 use iced::widget::{button, row, column, text, center, checkbox, text_input, scrollable, pick_list};
 use iced::widget::scrollable::{Scrollable, Direction};
+use iced::widget::image;
+use iced::widget::image::Handle;
 
 // use crate::{next_frame, vec2, Vec2};
 
 // use iced_macroquad::{Interface};
-// use iced_macroquad::iced::widget::image;
-// use iced_macroquad::iced::widget::image::Handle;
 // use macroquad::miniquad::conf::Platform;
 
 // use macroquad::prelude::*;
+
+use std::cell::RefCell;
+
+struct FrameContext {
+    width: f32,
+    height: f32,
+}
+
+impl FrameContext {
+    pub fn with<R>(f: impl FnOnce(&FrameContext) -> R) -> R {
+        FRAME.with(|ctx| f(ctx.borrow().as_ref().unwrap()))
+    }
+}
+
+thread_local! {
+    static FRAME: RefCell<Option<FrameContext>> = RefCell::new(None);
+}
+
+fn set_frame_context(width: f32, height: f32) {
+    FRAME.with(|ctx| *ctx.borrow_mut() = Some(FrameContext { width, height }));
+}
+
 
 trait UiScale {
     fn x(self) -> f32;
@@ -42,17 +72,13 @@ trait UiScale {
 
 impl UiScale for f32 {
     fn x(self) -> f32 {
-        let s = screen_width() / 2560.0;
-        self * s
+        FrameContext::with(|ctx| self * ctx.width / 2560.0)
     }
     fn y(self) -> f32 {
-        let s = screen_height() / 1440.0;
-        self * s
+        FrameContext::with(|ctx| self * ctx.height / 1440.0)
     }
     fn xy(self) -> f32 {
-        let h = screen_height() / 1440.0;
-        let w = screen_width() / 2560.0;
-        self * h * w *2.
+        FrameContext::with(|ctx| self * 2. * ctx.width / 2560.0 * ctx.height / 1440.0)
     }}
 
 trait HorizontalScroll<'a, Message: 'a> {
@@ -175,10 +201,10 @@ enum Message {
 // }
 
 // #[derive(Default)]
-pub struct Ui {
+pub struct Ui<B: Backend> {
     menu: PushdownAutomaton<State, Input, State>,
     ip_address: String,
-    pub endpoint: Box<dyn Chat>,
+    pub endpoint: Box<dyn Chat<B>>,
     pub endpoint_type: EndpointType,
     chat_message: String,
     pub players: HashMap<usize, Player>,
@@ -208,8 +234,8 @@ pub struct Ui {
 //     }
 // }
 
-impl From<Ui> for Ruleset {
-    fn from(ui: Ui) -> Self {
+impl<B: Backend> From<Ui<B>> for Ruleset {
+    fn from(ui: Ui<B>) -> Self {
         let players: Vec<Player> = ui.players.into_values().collect();
         Self::default(ui.victory_condition, &players)
     }
@@ -221,7 +247,7 @@ enum Lhs_Panel {
     MapGeneration,
 }
 
-impl Ui {
+impl<B: Backend> Ui<B> {
     fn new() -> Self {
         let transitions = generate_transitions();
         let start_state = &State::Main;
@@ -302,8 +328,8 @@ where
     };
 }
 
-impl Ui {
-    async fn update(mut self, message: Message, assets: &Assets) -> Self {
+impl<B: Backend> Ui<B> {
+    async fn update(mut self, message: Message, backend: &B, resources: &GameResources) -> Self {
         match message {
             Message::Transition(input) => {
                 self.menu.transition(input);
@@ -418,9 +444,11 @@ impl Ui {
             }
             Message::SetScenario(scenario) => {
                 self.scenario = scenario;
-                let scaling = screen_width() / 2560.0; // Reference width for 2K (2560 pixels)
+                let scaling = 1.0.x();
                 let world = crate::World::from_json(&self.scenario);
-                self.thumb = Some(get_map_thumb(&world, assets, scaling).await);
+                let (width, height) = (900.0.x(), 900.0.y());
+                let thumb_bytes = backend.get_map_thumbnail(&world, width, height, resources).await;
+                self.thumb = Some(Handle::from_rgba(width as u32, height as u32, thumb_bytes));
                 self.mapgen_map = Some(world);
             }
             Message::ToggleConfirmScenario => {
@@ -448,12 +476,13 @@ impl Ui {
             Message::GenerateMap => {
                 let mut world: crate::World = crate::World::new();
 
-                let mut locality_names: Vec<&str> = assets.locality_names.iter().map(|s| s.as_str()).collect();
+                let mut locality_names: Vec<&str> = resources.locality_names.iter().map(|s| s.as_str()).collect();
 
-                world.generate_from_template(&self.mapgen_ui, &mut locality_names, &assets.init_layout);
+                world.generate_from_template(&self.mapgen_ui, &mut locality_names, &resources.init_layout);
 
-                let scaling = screen_width() / 2560.0; // Reference width for 2K (2560 pixels)
-                self.thumb = Some(get_map_thumb(&world, assets, scaling).await);
+                let (width, height) = (900.0.x(), 900.0.y());
+                let thumb_bytes = backend.get_map_thumbnail(&world, width, height, resources).await;
+                self.thumb = Some(Handle::from_rgba(width as u32, height as u32, thumb_bytes));
 
                 self.mapgen_map = Some(world);
             }
@@ -506,13 +535,13 @@ fn get_main_button(display_text: &str, message: Message) -> Button<Message> {
 // }
 
 // fn get_sp_menu<'a>(state: &'a Ui) -> Container<'a, Message> {
-fn get_sp_menu<'a>(state: &'a Ui, width: f32) -> Vec<Column<'a, Message>> {
+fn get_sp_menu<'a, B: Backend>(state: &'a Ui<B>, width: f32) -> Vec<Column<'a, Message>> {
     let mut map_text = state.scenario.as_str();
     if map_text.is_empty() {map_text = "Choose Map";}
 
     let btn: Button<'_, Message> = match &state.thumb {
         Some(handle) => {
-            let img: iced_macroquad::iced::widget::Image<Handle> = image(state.thumb.as_ref().unwrap()).into();
+            let img: iced::widget::Image<Handle> = image(state.thumb.as_ref().unwrap()).into();
             let btn = button(img);
             btn
         }
@@ -608,7 +637,7 @@ fn get_sp_menu<'a>(state: &'a Ui, width: f32) -> Vec<Column<'a, Message>> {
         opt.as_ref().map(|v| v.as_static()).unwrap_or("None")
     }
 
-    fn get_template_param(ui: &Ui, param: crate::gen::TemplateFields) -> &str {
+    fn get_template_param<B: Backend>(ui: &Ui<B>, param: crate::gen::TemplateFields) -> &str {
         match param {
             // Some(mui) => match param {
                 crate::world::gen::TemplateFields::Name => ui.mapgen_ui.name,
@@ -666,7 +695,7 @@ fn get_sp_menu<'a>(state: &'a Ui, width: f32) -> Vec<Column<'a, Message>> {
     m
 }
 
-fn get_mp_offline_menu<'a>(state: &Ui, scaling: f32) -> Column<'a, Message> {
+fn get_mp_offline_menu<'a, B: Backend>(state: &Ui<B>, scaling: f32) -> Column<'a, Message> {
     column!()
                 .push(text_input(&format!("Address: {}", "127.0.0.1:8000"), &state.ip_address)
                         .size(64.0.xy())
@@ -681,7 +710,7 @@ fn get_mp_offline_menu<'a>(state: &Ui, scaling: f32) -> Column<'a, Message> {
                 .spacing(20.0.y())
 }
 
-fn get_mp_online_menu<'a>(state: &Ui, scaling: f32) -> Column<'a, Message> {
+fn get_mp_online_menu<'a, B: Backend>(state: &Ui<B>, scaling: f32) -> Column<'a, Message> {
     let status_text = match state.endpoint_type {
         EndpointType::Client => "Connected to",
         EndpointType::Server => "Hosting at",
@@ -716,77 +745,9 @@ fn get_scenario_list() -> Vec<std::fs::DirEntry> {
         .collect()
 }
 
-/// Function to render a scene to an image
-async fn get_map_thumb(world: &crate::World, assets: &Assets, scaling: f32) -> Handle {
-    println!("getting thumb");
-    // let scenario = Game::from_json(path);
-    // let game = Game::from_json(path);
-    // let scenario = game.swap();
-
-    // texture size
-    let width = 900.0.x(); // 2560;
-    let height = 900.0.y(); // 1440;
-
-    let mut layout = assets.init_layout.clone();
-
-    // 2a. bounds with the original logical hex size (whatever init_layout is)
-    let (min_x, min_y, max_x, max_y) = crate::mquad::map_bounds(world, &layout);
-    let map_w = max_x - min_x;
-    let map_h = max_y - min_y;
-
-
-    // 2b. uniform scale that preserves aspect ratio
-    let scale = (width / map_w).min(height / map_h);
-
-    layout.size = [
-        assets.init_layout.size[0] * scale,
-        assets.init_layout.size[1] * scale,
-    ];
-
-    // 2c. shift so the (scaled) map is centred in the texture
-    layout.origin = [
-        (width  - map_w * scale) * 0.5 - min_x * scale,
-        (height - map_h * scale) * 0.5 - min_y * scale,
-    ];
-
-    // Create a render target (offscreen texture)
-    let render_target = render_target(width as u32, height as u32);
-
-    let mut render_target_cam = Camera2D::from_display_rect(Rect::new(0., 0., width, height));
-    render_target_cam.render_target = Some(render_target.clone());
-    set_camera(&render_target_cam);
-
-    // Draw something
-    crate::mquad::draw_thumb(world, &layout, assets, 1.);
-
-    set_default_camera();
-
-    // Retrieve the pixel data
-    let image_data = render_target.texture.get_texture_data();
-
-    // (Optional) Save the image
-    image_data.export_png("output.png");
-
-    //image_data
-    let mut raw_bytes = image_data.bytes;
-    flip_image_vertically(&mut raw_bytes, width as usize, height as usize);
-    Handle::from_rgba(width as u32, height as u32, raw_bytes) // Convert to Iced Image Handle
-}
-
-fn flip_image_vertically(raw_bytes: &mut [u8], width: usize, height: usize) {
-    let row_size = width * 4; // 4 bytes per pixel (RGBA)
-    for y in 0..(height / 2) {
-        let top_index = y * row_size;
-        let bottom_index = (height - 1 - y) * row_size;
-        for i in 0..row_size {
-            raw_bytes.swap(top_index + i, bottom_index + i);
-        }
-    }
-}
-
-pub async fn main_menu<'a>(assets: &mut Assets) -> (bool, Ui) {
-    let mut state = Ui::new();
-    let mut interface = Interface::<Message>::new();
+pub async fn main_menu<'a, B: Backend>(backend: &B, resources: &mut GameResources) -> (bool, Ui<B>) {
+    let mut state = Ui::<B>::new();
+    let mut interface = iced_macroquad::Interface::<Message>::new();
 
     let dark_palette = Palette {
         // background: Color::from_rgb8(0x18, 0x1B, 0x1F), // deep slate
@@ -806,18 +767,18 @@ pub async fn main_menu<'a>(assets: &mut Assets) -> (bool, Ui) {
 
     while !state.exit {
         // poll
-        if is_key_pressed(KeyCode::Escape) {
+        if macroquad::prelude::is_key_pressed(macroquad::prelude::KeyCode::Escape) {
             messages.push(Message::Transition(Input::Back));
         }
 
         for message in messages.drain(..) {
-            state = state.update(message, assets).await;
+            state = state.update(message, backend, resources).await;
         }
 
-        state.endpoint.update();
+        state.endpoint.tick_without_component();
 
         // clear_background(LIGHTGRAY);
-        let scaling = screen_width() / 2560.0; // Reference width for 2K (2560 pixels)
+        let scaling = 1.0.x();
 
         let mut ui = match state.menu.get_state() {
             State::Main => center(scrollable(column!()
@@ -923,7 +884,7 @@ pub async fn main_menu<'a>(assets: &mut Assets) -> (bool, Ui) {
 
         let dark_rounded_style = move |_theme: &Theme| crate::ui::container::Style {
             // solid black background
-            background: Some(iced_macroquad::iced::Background::Color(Color::BLACK)),
+            background: Some(iced::Background::Color(Color::BLACK)),
             // white text so labels are readable
             text_color:  Some(Color::WHITE),
             ..crate::ui::container::Style::default()
@@ -937,7 +898,7 @@ pub async fn main_menu<'a>(assets: &mut Assets) -> (bool, Ui) {
 
         interface.view(&mut messages, ui);
 
-        next_frame().await
+        B::next_frame().await
     }
 
     (state.exit, state)
@@ -1004,15 +965,15 @@ pub fn test_ui() {
 // }
 
 
-impl<M: Mode + 'static, A: AssetProvider> App<M, A, Game>
+impl<M: Mode + 'static, B: Backend + 'static> App<M, B, Game>
 where 
-    M: NotOffline, 
-    Game: Component<A>, 
+    M: crate::network::NotOffline, 
+    Game: Component<B>, 
     <M as Mode>::Endpoint: 'static,
-    App<M, A, Game>: Component<A>,
+    App<M, B, Game>: Component<B>,
 {
-    pub fn from_ui(mut ui: ui::Ui) -> Box<dyn Component<A>> {
-        let replacement: Box<dyn Chat> = Box::new(Offline);
+    pub fn from_ui(mut ui: Ui<B>) -> Box<dyn Component<B>> {
+        let replacement: Box<dyn Chat<B>> = Box::new(Offline);
         // let endpoint = Client::new("").unwrap().into();
         let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
         let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
@@ -1024,19 +985,18 @@ where
         let mut component = Game::new(players, world, rules);
         // component.init_world();
 
-        let _marker = PhantomData::default();
-        let app = Box::new( Self {component, endpoint, _marker} );
+        let app = Box::new( Self::new(component, endpoint) );
         
         println!("init complete!");
         app
     }
 }
 
-impl<A: AssetProvider> App<Offline, A, Game>
+impl<B: Backend + 'static> App<Offline, B, Game>
 where 
-    Game: Component<A>,
+    Game: Component<B>,
 {
-    pub fn from_ui(mut ui: ui::Ui) -> Box<dyn Component<A>> {
+    pub fn from_ui(mut ui: Ui<B>) -> Box<dyn Component<B>> {
         let players_map = std::mem::take(&mut ui.players);
         let players: Vec<Player> = players_map.into_values().collect();
         //let rules = Ruleset::default(ui.victory_condition, &players); // or empty vector?

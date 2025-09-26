@@ -1,12 +1,12 @@
 #![feature(trait_alias)]
 #![allow(warnings)]
+#![feature(trivial_bounds)]
 
+mod backend;
 mod cubic;
 mod game;
 mod world;
 mod ai;
-// mod pixels;
-mod mquad;
 mod inputs;
 mod map_editor;
 mod river;
@@ -16,7 +16,6 @@ mod rules;
 mod network;
 mod cli;
 mod ui;
-mod renderer;
 
 use clap::Parser;
 use fog::*;
@@ -24,41 +23,30 @@ use ai::*;
 use cli::*;
 use cubic::*;
 use game::*;
-//use miniquad::{gl::glShaderSource, native::linux_x11::libx11::VisibilityChangeMask, UniformDesc};
-use miniquad::UniformDesc;
+use glyphon::cosmic_text::ttf_parser::gpos::MarkArray;
 use rules::Ruleset;
-use ui::{main_menu};
+// use ui::{main_menu};
 use world::*;
 use inputs::*;
 use map_editor::*;
 use network::*;
 use std::{collections::HashMap, f32::consts::PI, fs::File};
-// use crate::pixels::*;
-use mquad::*;
-// use macroquad::{file::load_file, miniquad::fs::load_file, prelude::*};
-use macroquad::{file::load_file, prelude::*};
 use dbase;
 
-pub struct Assets<F: FontHandle, T: TextureHandle, M: MaterialHandle> {
-    pub locality_names: Vec<String>,
-    pub font: F,
-    pub army: T,
-    pub port: T,
-    pub airport: T,
-    pub fields: T,
-    pub water_material: M,
-    pub init_layout: Layout<f32>,
-    pub shape: Vec<(f32, f32)>,
-    pub river: Vec<(usize, f32, f32)>,
-}
+use crate::backend::{mquad::Macroquad, Backend};
 
-pub trait AssetProvider {
-    type Font: FontHandle;
-    type Texture: TextureHandle;
-    type Material: MaterialHandle;
-
-    fn assets(&self) -> &Assets<Self::Font, Self::Texture, Self::Material>;
-}
+// pub struct Assets<F: FontHandle, T: TextureHandle, M: MaterialHandle> {
+//     pub locality_names: Vec<String>,
+//     pub font: F,
+//     pub army: T,
+//     pub port: T,
+//     pub airport: T,
+//     pub fields: T,
+//     pub water_material: M,
+//     pub init_layout: Layout<f32>,
+//     pub shape: Vec<(f32, f32)>,
+//     pub river: Vec<(usize, f32, f32)>,
+// }
 
 const WATER_FRAGMENT_SHADER: &'static str = include_str!("../assets/water_fragment_shader.glsl");
 const WATER_VERTEX_SHADER: &'static str = include_str!("../assets/water_vertex_shader.glsl");
@@ -166,66 +154,9 @@ fn load_resources() -> GameResources {
     GameResources {locality_names, init_layout, shape, river}
 }
 
-async fn load_assets(init_layout: Layout<i32>) -> Assets {
-    let font = load_ttf_font_from_bytes(FONT).unwrap();
-    // let font = load_ttf_font("assets/Iceberg-Regular.ttf").await.unwrap();
-    // let army = Texture2D::from_file_with_format(
-    //     include_bytes!("../assets/army.png"),
-    //     None,
-    // );
-    // let army: Texture2D = load_texture("assets/army.png").await.unwrap();
-    let army_f = macroquad::prelude::load_file("army.png").await.unwrap();
-    let army = Texture2D::from_file_with_format(&army_f, None);
-
-    // let port: Texture2D = load_texture("assets/port.png").await.unwrap();
-    let port = Texture2D::from_file_with_format(
-        include_bytes!("../assets/port.png"),
-        None,
-    );
-
-    let airport = Texture2D::from_file_with_format(
-        include_bytes!("../assets/airport.png"),
-        None,
-    );
-    // let airport: Texture2D = load_texture("assets/airport.png").await.unwrap();
-
-    let fields = Texture2D::from_file_with_format(
-        include_bytes!("../assets/grass.png"),
-        None,
-    );
-    // let fields = load_texture("assets/grass.png").await.expect("Failed to load texture");
-
-    let water_shader = crate::miniquad::ShaderSource::Glsl{
-        fragment: WATER_FRAGMENT_SHADER,
-        vertex: WATER_VERTEX_SHADER,
-    };
-
-    let water_material = load_material(
-        water_shader,
-        MaterialParams {
-            uniforms: vec![
-                UniformDesc::new("Time", UniformType::Float1),
-                UniformDesc::new("RectSize", UniformType::Float2),
-            ],
-            ..Default::default()
-        },
-    ).unwrap();
-
-    water_material.set_uniform("RectSize", (init_layout.size[0], init_layout.size[1]));
 
 
-    Assets{font, army, port, airport, fields, water_material}
-}
-
-fn window_conf() -> Conf {
-    Conf {
-        window_title: "Super Honeycomb Empire".to_owned(),
-        fullscreen: false,
-        ..Default::default()
-    }
-}
-
-fn new_game(rules: Ruleset, assets: &mut Assets) -> Game {
+fn new_game(resources: &mut GameResources) -> Game {
     let ai1 = AI{scores: DEFAULT_SCORES};
     let ai2 = AI{scores: DEFAULT_SCORES};
     let ai3 = AI{scores: DEFAULT_SCORES};
@@ -244,12 +175,18 @@ fn new_game(rules: Ruleset, assets: &mut Assets) -> Game {
     // let players = vec![player1, player2, player3, player4];
     // let players = vec![player1, player2, ];//player3, player4];
 
+    let victory_condition = VictoryCondition::Elimination;
+    let rules = Ruleset::default(victory_condition, &players);
+
     let world = World::new();
     // // save_map(&game.world.world);
     // // let mut world = World::from_json("assets/maps/map.json");
     // // let mut world = World::from_json("assets/saves/quicksave.json");
 
-    Game::new(players, world, rules, assets)
+    let mut game = Game::new(players, world, rules);
+    Game::init_world(&mut game, resources);
+    println!("world initialised!");
+    game
 }
 
 // async fn game_loop(game: &mut Game, layout: &mut Layout<f32>, assets: &Assets) {
@@ -280,79 +217,126 @@ fn new_game(rules: Ruleset, assets: &mut Assets) -> Game {
 
 // struct App<T: Component>(T);
 
-// fn get_app<T: Component>(assets: &mut Assets) -> dyn Component {
-//     new_game(assets)
-// }
+fn get_game<B: Backend, T: Component<B>> (resources: &mut GameResources) -> Box<dyn Component<B>> {
+    Box::new(new_game(resources))
+}
 
-#[macroquad::main(window_conf)]
-async fn main() {
-    set_pc_assets_folder("assets");
-    let mut assets = load_assets().await;
-
-    let (mut exit, ui) = main_menu(&mut assets).await;
-
-    if exit {return};
-
-    // let mut app = App::<Offline, Game>::from_ui(ui, &mut assets);
-
-    // let mut app: Box<App<Offline, Game>>= Box::new(App::<Offline, Game>::from_ui(ui, &mut assets));
-    // let swapped_app: Box<App<Offline, Editor>>= app.swap_component();
-
-    // let swapped_app: Box<App<Offline, <Game as Component>::Swap>> = app.swap_component();
-    // let app: Box<dyn Component> = Box::new(App::<Offline, Game>::from_ui(ui, &mut assets));
-
-    // let mut app: Box<dyn Component> = Box::new(App::<Offline, Game>::from_ui(ui, &mut assets));
-    let mut app = App::from_ui(ui, &mut assets);
-
-
-    // let args = Cli::parse();
-    // match args.mode {
-    //     Mode::Client => println!("Running in client mode"),
-    //     Mode::Server => println!("Running in server mode"),
-    //     Mode::Offline => println!("Running in offline mode"),
-    // }
-
-    // let mut endpoint: Box<dyn Endpoint> = match args.mode { // possibly replace Box<dyn Endpoint> with trait Endpoint if and when existential types are stabilised
-    //     Mode::Client => Box::new(ClientApp::new(game, &args.addrs).unwrap()),
-    //     Mode::Server => Box::new(ServerApp::new(game, &args.addrs).unwrap()),
-    //     Mode::Offline => Box::new(NullEndpoint::new(game)),
-    // };
-
-    // endpoint = Box::new(endpoint.swap_app())
-    
-    // let mut client = Client::new(game, "").unwrap();
-    // let mut client_e = Client::new(Editor::new(World::new(), Vec::new()), "").unwrap();
-    // let mut server = Server::new(new_game(&mut assets), "").unwrap();
-    // let mut server_e = Server::new(Editor::new(World::new(), Vec::new()), "").unwrap();
-    // let mut endpoint: &mut dyn Endpoint = &mut client;
-
-    // endpoint.app = endpoint.app.swap();
-    // either box and getters and setters or
-    // enum and matching 
-
-
-    // let app: &mut dyn Component = &mut match state {
-    //     State::Game(game) => game,
-    //     State::Editor(editor) => editor,
-    // };//&mut game;
-
-    // let app: &mut dyn Component = &mut game;
-
-    let mut layout = assets.init_layout.clone();
-
-    let mut time = 0.0;
-    while !exit {
-        exit = app.poll(&mut layout);
-        app.draw(&mut layout, &mut assets, time);
-        next_frame().await;
-        app.update();
-        if is_key_pressed(KeyCode::F1) {
-            app = app.swap();
-        }
-        time += get_frame_time();
+fn get_app<B, M>(resources: &mut GameResources) -> Box<dyn Component<B>>
+where
+    B: Backend,
+    M: network::Mode + 'static,
+    M::Endpoint: Chat<B> + 'static,
+    App<M, Macroquad, Game>: Component<B>,
+{
+    let mut game = new_game(resources);
+    let args = Cli::parse();
+    match args.mode {
+        cli::Mode::Client => println!("Running in client mode"),
+        cli::Mode::Server => println!("Running in server mode"),
+        cli::Mode::Offline => println!("Running in offline mode"),
     }
 
+    // Construct a placeholder endpoint
+    let mut endpoint: Box<dyn Chat<B>> = Box::new(Offline);
+
+    // Replace it with the runtime choice
+    let replacement: Box<dyn Chat<B>> = match args.mode {
+        cli::Mode::Client => Box::new(Client::new(&args.addrs).unwrap()),
+        cli::Mode::Server => Box::new(Server::new(&args.addrs).unwrap()),
+        cli::Mode::Offline => Box::new(Offline),
+    };
+
+    let endpoint_ = std::mem::replace(&mut endpoint, replacement);
+
+    // Downcast to the concrete endpoint type
+    let endpoint = match args.mode {
+        cli::Mode::Client => *endpoint_.into_any().downcast::<M::Endpoint>().unwrap(),
+        cli::Mode::Server => *endpoint_.into_any().downcast::<M::Endpoint>().unwrap(),
+        cli::Mode::Offline => *endpoint_.into_any().downcast::<M::Endpoint>().unwrap(),
+    };
+
+    Box::new(App::<M, Macroquad, Game>::new(game, endpoint))
 }
+
+// fn get_app(resources: &mut GameResources) -> Box<dyn Component<Macroquad>> {
+//     let game: Game = new_game(resources);
+//     println!("about to create Box(Game)");
+//     let b = Box::new(game);
+//     println!("about to return Box(Game)");
+//     b
+// }
+
+
+
+// #[macroquad::main(window_conf)]
+// async fn main() {
+//     set_pc_assets_folder("assets");
+//     let mut assets = load_assets().await;
+
+//     let (mut exit, ui) = main_menu(&mut assets).await;
+
+//     if exit {return};
+
+//     // let mut app = App::<Offline, Game>::from_ui(ui, &mut assets);
+
+//     // let mut app: Box<App<Offline, Game>>= Box::new(App::<Offline, Game>::from_ui(ui, &mut assets));
+//     // let swapped_app: Box<App<Offline, Editor>>= app.swap_component();
+
+//     // let swapped_app: Box<App<Offline, <Game as Component>::Swap>> = app.swap_component();
+//     // let app: Box<dyn Component> = Box::new(App::<Offline, Game>::from_ui(ui, &mut assets));
+
+//     // let mut app: Box<dyn Component> = Box::new(App::<Offline, Game>::from_ui(ui, &mut assets));
+//     let mut app = App::from_ui(ui, &mut assets);
+
+
+//     // let args = Cli::parse();
+//     // match args.mode {
+//     //     Mode::Client => println!("Running in client mode"),
+//     //     Mode::Server => println!("Running in server mode"),
+//     //     Mode::Offline => println!("Running in offline mode"),
+//     // }
+
+//     // let mut endpoint: Box<dyn Endpoint> = match args.mode { // possibly replace Box<dyn Endpoint> with trait Endpoint if and when existential types are stabilised
+//     //     Mode::Client => Box::new(ClientApp::new(game, &args.addrs).unwrap()),
+//     //     Mode::Server => Box::new(ServerApp::new(game, &args.addrs).unwrap()),
+//     //     Mode::Offline => Box::new(NullEndpoint::new(game)),
+//     // };
+
+//     // endpoint = Box::new(endpoint.swap_app())
+    
+//     // let mut client = Client::new(game, "").unwrap();
+//     // let mut client_e = Client::new(Editor::new(World::new(), Vec::new()), "").unwrap();
+//     // let mut server = Server::new(new_game(&mut assets), "").unwrap();
+//     // let mut server_e = Server::new(Editor::new(World::new(), Vec::new()), "").unwrap();
+//     // let mut endpoint: &mut dyn Endpoint = &mut client;
+
+//     // endpoint.app = endpoint.app.swap();
+//     // either box and getters and setters or
+//     // enum and matching 
+
+
+//     // let app: &mut dyn Component = &mut match state {
+//     //     State::Game(game) => game,
+//     //     State::Editor(editor) => editor,
+//     // };//&mut game;
+
+//     // let app: &mut dyn Component = &mut game;
+
+//     let mut layout = assets.init_layout.clone();
+
+//     let mut time = 0.0;
+//     while !exit {
+//         exit = app.poll(&mut layout);
+//         app.draw(&mut layout, &mut assets, time);
+//         next_frame().await;
+//         app.update();
+//         if is_key_pressed(KeyCode::F1) {
+//             app = app.swap();
+//         }
+//         time += get_frame_time();
+//     }
+
+// }
 
 
 // let size = [0.1,0.1]; // use this if in local coords
@@ -364,3 +348,81 @@ async fn main() {
 // };
 
 // // set_camera(camera);
+
+
+
+
+
+// #[macroquad::main(window_conf)]
+// async fn main() {
+//     // let (mut exit, ui) = main_menu(&mut assets).await;
+//     // if exit {return};
+//     // let mut app = App::from_ui(ui, &mut assets);
+
+//     let mut exit = false;
+
+//     let mut resources = load_resources();
+//     let backend = Macroquad::new(resources.init_layout).await;
+//     // let app: &mut dyn Component<crate::backend::mquad::Macroquad> = &mut get_app(&mut resources);
+//     let mut app: Box<dyn Component<crate::backend::mquad::Macroquad>> = get_app::<Macroquad, Game>(&mut resources);
+
+//     let mut layout = resources.init_layout.clone();
+
+//     let mut time = 0.0;
+//     while !exit {
+//         app.draw(&mut layout, &backend, &resources, time);
+//         app.update();
+//         // if is_key_pressed(KeyCode::F1) {
+//         //     app = app.swap();
+//         // }
+//         time += Macroquad::get_frame_time();
+//         exit = app.poll(&mut layout, &backend);
+//         // exit = backend.poll_events(|event| {
+//         //     app.poll(event, &mut layout);
+//         // });
+
+//         Macroquad::next_frame().await;
+//     }
+// }
+
+fn main() {
+    std::env::set_var("RUST_BACKTRACE", "full");
+    // let window_config = WindowConfig {
+    //     title: "Super Honeycomb Empire".into(),
+    //     fullscreen: false,
+    // };
+
+    // let mut endpoint: Box<dyn Endpoint> = Box::new(Offline);
+    // let mut endpoint = Offline;
+
+
+    let mut resources = load_resources();
+    let backend = Macroquad::new(resources.init_layout);
+    // let app: &mut dyn Component<crate::backend::mquad::Macroquad> = &mut get_app(&mut resources);
+
+    // let mut component: Option<Box<dyn Component<crate::backend::mquad::Macroquad>>> = Some(get_app::<Macroquad, Game>(&mut resources));
+    // let component = new_game(&mut resources);
+
+    // let mut app= Some(Box::new(App::<Offline, Macroquad, Game>::new(component, endpoint)));
+    // app = app as Box<dyn Component<Macroquad>>;
+
+    let (mut exit, ui) = crate::ui::main_menu(&backend, &mut resources).await;
+    if exit {return};
+    let mut app = App::from_ui(ui, &mut resources);
+
+    // let mut app = Some(get_app::<Macroquad, _>(&mut resources));
+
+    let mut layout = resources.init_layout.clone();
+    
+    let mut exit = false;
+    backend.run_loop(move |backend, time| {
+        let message = app.as_mut().unwrap().poll(&mut layout, backend);
+        app.as_ref().unwrap().draw(&layout, backend, &resources, time);
+        let mut app_box = app.take().unwrap();
+        if matches!(message, Message::Exit) {exit = true}
+        app = app_box.update(message);
+        // app = new_app;
+
+        exit
+    });
+}

@@ -1,7 +1,8 @@
-use crate::{cubic::{self, Layout}, AssetProvider};
+use crate::{backend::Backend, cubic::{self, Layout}, game::{Game, GameResources}, inputs::InputState, network::Message};
 use crate::game;
 
 use game::VictoryCondition;
+use wgpu::core::resource;
 
 use crate::{network::{AsAny, IntoAny, Component}, rules::Ruleset, world::{Locality, Player, TileCategory}};
 
@@ -206,26 +207,66 @@ impl Editor {
 //     Editor::new()
 // }
 
-impl<A: AssetProvider> Component<A> for Editor {
+impl<B: Backend> Component<B> for Editor {
     // type Swap = crate::Game;
-    fn draw(&self, &layout: &Layout<f32>, assets: &A, time: f32) {
+    fn draw(&self, &layout: &Layout<f32>, backend: &B, resources: &GameResources, time: f32) {
         // crate::draw_editor(&self, &layout, assets, time);
+        backend.draw_base_tiles(&self.world, &layout, time);
+        backend.draw_game_tiles(&self.world, &layout);
+        // draw_tile_selector(&layout); // TODO: Implement in wgpu renderer
+        // draw_editor_brush(editor);
+        B::draw_army_info(&self.world, &layout);
+        // draw_all_locality_names(&editor.world, &layout, &assets); // TODO: Implement in wgpu renderer
     }
-    fn poll(&mut self, layout: &mut Layout<f32>) -> bool {
-        true
-        // crate::poll_map_editor_inputs(self, layout)
+    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Message {
+        let mut message = backend.poll_inputs(layout);
+
+        if let Some(cube) = backend.poll_click_inputs(layout) {
+            self.click(&cube)
+        }
+
+        if let Some(_) = backend.poll_right_click_inputs(layout) {
+            self.right_click()
+        }
+                            
+        message
     }
     // fn swap(self) -> Self::Swap{
     //     crate::Game::from(self)
     // }
-    fn swap(self: Box<Self>) -> Box<dyn Component<A>> {
-        Box::new(crate::Game::from(*self))
-    }
+    // fn swap(self: Box<Self>) -> Box<dyn Component<B>> {
+    //     Box::new(crate::Game::from(*self))
+    // }
     // fn swap(self) -> impl Component + IntoAny {
     //     crate::Game::from(self)
     // }
-    fn update(&mut self) {
-        {}
+    fn update(mut self: Box<Self>, message: Message) -> Option<Box<dyn Component<B>>> {
+        let swap = match message {
+            Message::Save => {
+                std::fs::create_dir_all("assets/scenarios");
+                self.to_json("assets/scenarios/quicksave.json");
+                self as Box<dyn Component<B>>
+            },
+            Message::Load => {
+                std::fs::create_dir_all("assets/scenarios");
+                *self = Editor::from_json("assets/scenarios/quicksave.json");
+                self
+            },
+            Message::Swap => {
+                Box::new(Game::from(*self)) as Box<dyn Component<B>>
+            }
+            Message::ToggleLayer => {
+                self.toggle_layer();
+                self
+            },
+            Message::Clear => {
+                *self = Editor::new(World::new(), vec!());
+                self
+            }
+            _ => {self}
+        };
+
+        Some(swap)
     }
     // fn empty() -> Self {
     //     let players = vec!();
