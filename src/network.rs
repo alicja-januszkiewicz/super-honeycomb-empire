@@ -1,4 +1,5 @@
 use chrono::Local;
+use iced_macroquad::iced::advanced::layout;
 use rand::random;
 use serde::Deserialize;
 use serde::Serialize;
@@ -48,6 +49,27 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 
+pub struct Empty;
+
+impl IntoAny for Empty {
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+}
+
+impl<B: Backend> Component<B> for Empty {
+    type Message = Message;
+    fn draw(&self, layout: &Layout<f32>, backend: &mut B, resources: &GameResources, time: f32) {
+        
+    }
+    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Message {
+        Message::Tick
+    }
+    fn update(self: Box<Self>, message: Message) -> Box<dyn ErasedComponent<B>> {
+        self
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EndpointType {
     Offline,
@@ -96,7 +118,7 @@ pub trait NotOffline {}
 impl NotOffline for ClientMode {}
 impl NotOffline for ServerMode {}
 
-pub struct App<M: Mode, B: Backend, T: Component<B>> {
+pub struct App<M: Mode, B: Backend, T: Component<B, Message = Message>> {
     pub component: T,
     pub endpoint: M::Endpoint,
     _marker: std::marker::PhantomData<B>,
@@ -131,7 +153,7 @@ pub struct App<M: Mode, B: Backend, T: Component<B>> {
 // }
 
 impl<M, B, T> App<M, B, T> 
-where M: Mode, B: Backend, T: Component<B>
+where M: Mode, B: Backend, T: Component<B, Message = Message>
 {
     pub fn new(component: T, endpoint: M::Endpoint) -> Self {
         let _marker = PhantomData::default();
@@ -159,27 +181,53 @@ where M: Mode, B: Backend, T: Component<B>
 // impl<M: Mode<Endpoint = M>, B: Backend, T: Component<B>> App<M, B, T> where M: HandleOutboundMessage{
 impl<M, B, T> Component<B> for App<M, B, T> 
 where
-    M: Endpoint<B>, //HandleOutboundMessage + Endpoint<B>,
+    M: Endpoint + 'static, //HandleOutboundMessage + Endpoint<B>,
     M: Mode<Endpoint = M>, 
-    B: Backend,
-    T: Component<B> + IsUserActive + 'static, App<M, B, T>: IntoAny
+    B: Backend + 'static,
+    T: Component<B, Message = Message> + IsUserActive + 'static,
+    App<M, B, T>: IntoAny
 {
-    fn draw(&self, layout: &Layout<f32>, backend: &B, resources: &GameResources, time: f32) {
+    type Message = Message;
+    fn draw(&self, layout: &Layout<f32>, backend: &mut B, resources: &GameResources, time: f32) {
         self.component.draw(layout, backend, resources, time)
     }
     fn poll(
         &mut self,
         layout: &mut Layout<f32>,
         backend: &B,
-    ) -> Message {
+    ) -> Self::Message {
         let mut message = self.component.poll(layout, backend);
         message
     }
-    fn update(mut self: Box<Self>, message: Message) -> Option<Box<dyn Component<B>>> {
+    fn update(mut self: Box<Self>, message: Self::Message) -> Box<dyn ErasedComponent<B>> {
         let n = self.endpoint.count_connections();
         let active_users: Vec<usize> = (0..n).filter_map(|uid| self.component.is_user_active(uid).then_some(uid)).collect();
 
-        self.endpoint.tick(Box::new(self.component), message, active_users)
+        let messages = self.endpoint.tick(message, active_users);
+
+        let mut component = Some(Box::new(self.component));// as Box<dyn Component<B, Message = Self::Message>>; // concrete Box<T>
+        let mut swapped: Option<Box<dyn ErasedComponent<B>>> = None;
+
+        for msg in messages {
+            match msg {
+                Message::Swap => {
+                    let next = component.take().unwrap().update(msg); // returns Box<dyn ErasedComponent<B>>
+                    swapped = Some(next);
+                    break
+                }
+                _ => {
+                    let next = component.take().unwrap().update(msg); // returns Box<dyn ErasedComponent<B>>
+                    component = next.into_any().downcast::<T>().ok();
+                }
+            }
+        }
+
+        if let Some(erased) = swapped {
+            erased
+        } else {
+            let component = component.expect("component must be present");
+            Box::new(Self::new(*component, self.endpoint)) as Box<dyn ErasedComponent<B>>
+        }
     }
 }
 
@@ -436,7 +484,7 @@ impl<B: Backend> App<ClientMode, B, Game> {
 }
 
 impl<B: Backend> App<ServerMode, B, Game> where
-    Game: Component<B>,
+    Game: Component<B, Message = Message>,
 {
     pub fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> bool {
         // self.component.poll(layout, backend)
@@ -502,7 +550,7 @@ impl<B: Backend> App<ServerMode, B, Game> where
         Ok(self)
     }
 
-    fn poll_current_stream(mut self: Box<Self>) -> Option<Box<dyn Component<B>>> { // -> <ServerMode as Mode>::Endpoint {
+    fn poll_current_stream(mut self: Box<Self>) -> Option<Box<dyn ErasedComponent<B>>> { // -> <ServerMode as Mode>::Endpoint {
         let mut swap = None;
         if self.endpoint.streams.is_empty() {
             return swap;
@@ -521,7 +569,7 @@ impl<B: Backend> App<ServerMode, B, Game> where
         for s in self.endpoint.streams.iter() {
             write_json_message(s, &message);
         }
-        swap
+        Some(swap)
     }
     fn handle_command(&mut self, command: Command) {//-> <ServerMode as Mode>::Endpoint {
         let idx = self.component.current_player_index().unwrap();
@@ -626,21 +674,22 @@ impl GetPlayers for Server {
 }
 
 
-pub trait Endpoint<B: Backend> {
+pub trait Endpoint {
     fn tick_without_component(&mut self);
-    fn tick(&mut self, component: Box<dyn Component<B>>, message: Message, active_users: Vec<usize>) -> Option<Box<dyn Component<B>>>;
+    // fn tick(&mut self, component: Box<dyn Component<B, Message = Message>>, message: Message, active_users: Vec<usize>) -> Box<dyn ErasedComponent<B>>;
+    fn tick(&mut self, message: Message, active_users: Vec<usize>) -> Vec<Message>;
     fn count_connections(&self) -> usize;
     // fn streams(&self);
     fn handle_input(&self);
     fn close(self: Box<Self>);
 }
 
-impl<B: Backend> Endpoint<B> for Server {
+impl Endpoint for Server {
     fn tick_without_component(&mut self) {
         self.handle_client().expect("err");
         self.poll_all_streams();
     }
-    fn tick(&mut self, mut component: Box<dyn Component<B>>, message: Message, active_users: Vec<usize>) -> Option<Box<dyn Component<B>>> {
+    fn tick(&mut self, message: Message, active_users: Vec<usize>) -> Vec<Message> {
         self.handle_client().expect("err");
         self.poll_all_streams();
         // component.update();
@@ -648,17 +697,23 @@ impl<B: Backend> Endpoint<B> for Server {
         // let comp = *component;
         // let idx = component.current_player_index().unwrap();
         // let idx = (&*component).get_current_player_index().unwrap();
+        let mut messages = vec!();
         for uid in active_users {
             let stream = &self.streams[uid];
-            let message = read_json_message_async(stream)?.ok().unwrap_or(Message::Tick);
+            let message = read_json_message_async(stream).expect("cannot read strean message").ok().unwrap_or(Message::Tick);
             // println!("received message from uid {:}: {:}", uid, message);
             for s in self.streams.iter() {
                 write_json_message(s, &message);
             }
             //TODO: Possibly will lead to bugs when two users try to swap on same frame
-            component = component.update(message).unwrap();
+            messages.push(message);
+            if matches!(messages[messages.len()], Message::Swap) {
+                break
+            }
+            // component = component.update(message);
         }
-        Some(component)
+        // component
+        messages
     }
     fn count_connections(&self) -> usize {
         self.streams.len()
@@ -671,15 +726,13 @@ impl<B: Backend> Endpoint<B> for Server {
     }
 }
 
-impl<B: Backend> Endpoint<B> for Client {
+impl Endpoint for Client {
     fn tick_without_component(&mut self) {
         self.update();
     }
-
-    fn tick(&mut self, component: Box<dyn Component<B>>, message: Message, active_users: Vec<usize>) -> Option<Box<dyn Component<B>>> {
+    fn tick(&mut self, message: Message, active_users: Vec<usize>) -> Vec<Message> {
         write_json_message(&self.stream, &message);
-        self.update();
-        Some(component)
+        vec!()
     }
     fn count_connections(&self) -> usize {
         1
@@ -692,12 +745,12 @@ impl<B: Backend> Endpoint<B> for Client {
     }
 }
 
-impl<B: Backend> Endpoint<B> for Offline {
+impl Endpoint for Offline {
     fn tick_without_component(&mut self) {
         
     }
-    fn tick(&mut self, component: Box<dyn Component<B>>, message: Message, active_users: Vec<usize>) -> Option<Box<dyn Component<B>>> {
-        component.update(message)
+    fn tick(&mut self, message: Message, active_users: Vec<usize>) -> Vec<Message> {
+        vec!(message)
     }
     fn count_connections(&self) -> usize {
         0
@@ -758,24 +811,24 @@ impl<B: Backend + 'static> IntoAny for App<Offline, B, Editor> {
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
 }
 
-pub trait Chat<B: Backend>: SendChat + GetChat + Endpoint<B> {
+pub trait Chat: SendChat + GetChat + Endpoint {
     fn as_any(&self) -> &dyn Any;
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
 }
 
-impl<B: Backend> Chat<B> for Offline {
+impl Chat for Offline {
     fn as_any(&self) -> &dyn Any {
         self
     }
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
 }
-impl<B: Backend> Chat<B> for Client {
+impl Chat for Client {
     fn as_any(&self) -> &dyn Any {
         self
     }
     fn into_any(self: Box<Self>) -> Box<dyn Any> { self }
 }
-impl<B: Backend> Chat<B> for Server {
+impl Chat for Server {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -947,14 +1000,57 @@ impl<B: Backend> App<ClientMode, B, Game> {
 //     fn swap(self) -> Self::Swap; //impl Component;
 // }
 pub trait Component<B: Backend>: IntoAny {
+    type Message;
     // type Swap: Component;
     // fn poll(self: Box<Self>, layout: &mut Layout<f32>, backend: &B) -> (bool, Option<Box<dyn Component<B>>>);
-    fn draw(&self, layout: &Layout<f32>, backend: &B, resources: &GameResources, time: f32);
-    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Message;
-    fn update(self: Box<Self>, message: Message) -> Option<Box<dyn Component<B>>>;
+    fn draw(&self, layout: &Layout<f32>, backend: &mut B, resources: &GameResources, time: f32);
+    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Self::Message;
+    fn update(self: Box<Self>, message: Self::Message) -> Box<dyn ErasedComponent<B>>;
     // fn swap(self) -> Self::Swap; //Box<dyn Component>;//impl Component;
     // fn swap(self: Box<Self>) -> Box<dyn Component<B>>;//Box<dyn Component>;//impl Component;
     // fn empty() -> Self;
+}
+
+// trait ErasedComponent<B: Backend> {
+//     fn step(
+//         self: Box<Self>,
+//         layout: &mut Layout<f32>,
+//         backend: &B,
+//         resources: &GameResources,
+//         time: f32,
+//     ) -> Option<Box<dyn ErasedComponent<B>>>;
+// }
+
+pub trait ErasedComponent<B: Backend>: IntoAny {
+    fn step(
+        self: Box<Self>,
+        layout: &mut Layout<f32>,
+        backend: &mut B,
+        resources: &GameResources,
+        time: f32,
+    )-> (Box<dyn ErasedComponent<B>>, bool);
+}
+
+impl<B, C> ErasedComponent<B> for C
+where
+    B: Backend,
+    C: Component<B> + 'static,
+    C::Message: 'static,
+{
+    fn step(
+        mut self: Box<Self>,
+        layout: &mut Layout<f32>,
+        backend: &mut B,
+        resources: &GameResources,
+        time: f32,
+    ) -> (Box<dyn ErasedComponent<B>>, bool) {
+        let mut exit = false;
+        self.draw(&layout, backend, &resources, time);
+        let msg = self.poll(layout, backend);
+        let next = self.update(msg);
+        // if matches!(msg, Message::Exit) { exit = true }
+        (next, exit)
+    }
 }
 
 #[derive(Debug)]
@@ -1161,6 +1257,8 @@ pub fn write_json_message(stream: &TcpStream, message: &Message) -> Result<(), B
 #[derive(Serialize, Deserialize)]
 pub enum Message {
     Tick,
+    Back,
+    StartGame,
     SetPlayer(Player),
     NewPlayer {starting_position: Cube<i32>, player: Player}, // todo: remove
     Initialise {turn: usize, players: Vec<Player>, world: World},
@@ -1180,6 +1278,8 @@ impl core::fmt::Display for Message {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         match self {
             Message::Tick => write!(f, "Tick"),
+            Message::Back => write!(f, "Back"),
+            Message::StartGame => write!(f, "StartGame"),
             Message::SetPlayer{..} => write!(f, "SetPlayer"),
             Message::NewPlayer{..} => write!(f, "NewPlayer"),
             Message::Initialise{..} => write!(f, "Initialise"),

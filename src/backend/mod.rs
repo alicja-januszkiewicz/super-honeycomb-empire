@@ -1,4 +1,5 @@
 use crate::{cubic::Layout, game::{Game, GameResources}, network::{Component, Message}, river::CubeSide, world::World};
+use crate::ui;
 
 #[cfg(feature="wgpu")]
 mod wgpu;
@@ -6,7 +7,6 @@ mod wgpu;
 // #[cfg(feature="mquad")]
 #[cfg_attr(any(feature="mquad", rust_analyzer), path = "mquad/mod.rs")]
 pub mod mquad;
-
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -21,6 +21,10 @@ pub struct Color { pub r: f32, pub g: f32, pub b: f32, pub a: f32 }
 pub trait Backend {
     // type Event;
     // type Assets;
+    fn render_ui<'a>(&mut self, messages: &mut Vec<ui::Message>, view: ui::View<'a>);
+
+    fn set_buffer(&mut self, data: Vec<u8>);
+    fn take_buffer(&self) -> Option<Vec<u8>>;
 
     fn new(init_layout: Layout<f32>) -> Self;
 
@@ -81,7 +85,8 @@ pub trait Backend {
 // pub struct FontId(u32);
 
 pub fn draw_thumb<B: Backend>(world: &World, &layout: &Layout<f32>, backend: &B, resources: &GameResources, time: f32) {
-    macroquad::prelude::clear_background(macroquad::prelude::DARKGRAY);
+    let color = Color { r: 0.31, g: 0.31, b: 0.31, a: 1.0 };
+    B::clear(color);
 
     backend.draw_base_tiles(&world, &layout, time);
     backend.draw_game_tiles(&world, &layout);

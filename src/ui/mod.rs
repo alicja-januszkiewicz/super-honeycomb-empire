@@ -1,10 +1,13 @@
 use core::panic;
-use std::alloc::Layout;
+// use std::alloc::Layout;
 use std::collections::HashSet;
+use std::os::unix::net;
 use dsl::pda;
 use hashbrown::HashMap;
+use wgpu::core::resource;
+use wgpu::naga::back;
 
-use crate::backend::{self, Backend};
+use crate::Backend;
 
 // use pda::*;
 use pda::PushdownAutomaton;
@@ -12,18 +15,29 @@ use strum::{AsStaticRef, EnumCount, IntoEnumIterator};
 
 use crate::game::{Game, GameResources, VictoryCondition};
 use crate::map_editor::Editor;
-use crate::network::{App, Chat, ChatMsg, Client, Component, EndpointType, Mode, Offline, SendChat, Server};
+use crate::network::{self, App, Chat, ChatMsg, Client, Component, EndpointType, ErasedComponent, IntoAny, Mode, Offline, SendChat, Server};
 use crate::rules::Ruleset;
 use crate::world::r#gen::{CapitalsGen, LocalitiesGen, RiverGen, ShapeGen};
 use crate::world::Player;
 use crate::FONT;
+use crate::cubic::Layout;
 
-#[cfg(feature = "wgpu")]
-pub use iced::*;
+// #[cfg(feature = "wgpu")]
+// pub use iced::*;
 
-#[cfg_attr(any(feature="mquad", rust_analyzer), path = "mquad/mod.rs")]
-pub use iced_macroquad::iced;
-pub use iced_macroquad::iced::*;
+// #[cfg_attr(any(feature="mquad", rust_analyzer), path = "mquad/mod.rs")]
+// #[cfg(feature = "mquad")]
+// pub use iced_macroquad::iced;
+// pub use iced_macroquad::iced::*;
+
+// #[cfg(feature = "wgpu")]
+// pub use iced as iced;
+
+// #[cfg(feature = "mquad")]
+// pub use iced_macroquad::iced as iced;
+
+pub use iced_macroquad::iced as iced;
+
 
 use iced::Alignment::Center;
 use iced::{Color, Element, Length};
@@ -49,6 +63,12 @@ struct FrameContext {
     height: f32,
 }
 
+impl Default for FrameContext {
+    fn default() -> Self {
+        Self {width: 800., height: 600.}
+    }
+}
+
 impl FrameContext {
     pub fn with<R>(f: impl FnOnce(&FrameContext) -> R) -> R {
         FRAME.with(|ctx| f(ctx.borrow().as_ref().unwrap()))
@@ -56,7 +76,7 @@ impl FrameContext {
 }
 
 thread_local! {
-    static FRAME: RefCell<Option<FrameContext>> = RefCell::new(None);
+    static FRAME: RefCell<Option<FrameContext>> = RefCell::new(Some(FrameContext::default()));
 }
 
 fn set_frame_context(width: f32, height: f32) {
@@ -162,7 +182,8 @@ pda! {
 // }
 
 #[derive(Debug, Clone)]
-enum Message {
+pub enum Message {
+    Tick,
     Transition(Input),
     IpAddressChanged(String),
     ChatMessageChanged(String),
@@ -201,10 +222,11 @@ enum Message {
 // }
 
 // #[derive(Default)]
-pub struct Ui<B: Backend> {
+pub struct Ui {
     menu: PushdownAutomaton<State, Input, State>,
+    messages: std::sync::Mutex<Option<Vec<Message>>>,
     ip_address: String,
-    pub endpoint: Box<dyn Chat<B>>,
+    pub endpoint: Box<dyn Chat>,
     pub endpoint_type: EndpointType,
     chat_message: String,
     pub players: HashMap<usize, Player>,
@@ -216,8 +238,11 @@ pub struct Ui<B: Backend> {
     mapgen_ui: crate::gen::Template,
     pub mapgen_map: Option<crate::World>,
     thumb: Option<Handle>,
+    resources: GameResources,
     exit: bool,
 }
+
+pub type View<'a> = Element<'a, Message, Theme>;
 
 // pub enum Endpoint {
 //     Client(Client),
@@ -234,8 +259,8 @@ pub struct Ui<B: Backend> {
 //     }
 // }
 
-impl<B: Backend> From<Ui<B>> for Ruleset {
-    fn from(ui: Ui<B>) -> Self {
+impl From<Ui> for Ruleset {
+    fn from(ui: Ui) -> Self {
         let players: Vec<Player> = ui.players.into_values().collect();
         Self::default(ui.victory_condition, &players)
     }
@@ -247,13 +272,33 @@ enum Lhs_Panel {
     MapGeneration,
 }
 
-impl<B: Backend> Ui<B> {
-    fn new() -> Self {
+pub fn get_ui_theme() -> Theme {
+    let dark_palette = Palette {
+        // background: Color::from_rgb8(0x18, 0x1B, 0x1F), // deep slate
+        background: Color::from_rgb8(0x00, 0x00, 0x00), // deep slate
+        text:       Color::WHITE,                      // high contrast
+        primary:    Color::from_rgb8(0x2A, 0x2F, 0x36), // soft gunmetal
+        success:    Color::from_rgb8(0xA0, 0xFF, 0xB0), // minty green
+        danger:     Color::from_rgb8(0xFF, 0x5C, 0x5C), // coral red
+    };
+    let dark_theme = Theme::custom("Nightshade".to_string(), dark_palette);
+    dark_theme
+}
+
+impl Ui {
+    pub fn new() -> Self {
+        font::load(vec![FONT.into()]);
+
         let transitions = generate_transitions();
         let start_state = &State::Main;
         let final_states = HashSet::new();
         let mut pda = PushdownAutomaton::new(start_state, final_states, transitions);
+
+        let resources = crate::load_resources();
+        let messages = std::sync::Mutex::new(None);
+
         Self {
+            messages: messages,
             menu: pda,
             ip_address: "127.0.0.1:8000".into(),
             endpoint: Box::new(Offline),
@@ -268,6 +313,7 @@ impl<B: Backend> Ui<B> {
             mapgen_ui: crate::gen::Template::default(),
             mapgen_map: None,
             thumb: None,
+            resources: resources,
             exit: false,
         }
     }
@@ -328,8 +374,8 @@ where
     };
 }
 
-impl<B: Backend> Ui<B> {
-    async fn update(mut self, message: Message, backend: &B, resources: &GameResources) -> Self {
+impl Ui {
+    fn _update(&mut self, message: Message) -> () {
         match message {
             Message::Transition(input) => {
                 self.menu.transition(input);
@@ -356,7 +402,7 @@ impl<B: Backend> Ui<B> {
                 self.endpoint_type = endpoint_type;
             }
             Message::CloseEndpoint => {
-                self.endpoint.close();
+                // self.endpoint.close();
                 self.endpoint = Box::new(Offline);
                 self.endpoint_type = EndpointType::Offline;
             }
@@ -446,9 +492,7 @@ impl<B: Backend> Ui<B> {
                 self.scenario = scenario;
                 let scaling = 1.0.x();
                 let world = crate::World::from_json(&self.scenario);
-                let (width, height) = (900.0.x(), 900.0.y());
-                let thumb_bytes = backend.get_map_thumbnail(&world, width, height, resources).await;
-                self.thumb = Some(Handle::from_rgba(width as u32, height as u32, thumb_bytes));
+                self.thumb = None;
                 self.mapgen_map = Some(world);
             }
             Message::ToggleConfirmScenario => {
@@ -467,23 +511,19 @@ impl<B: Backend> Ui<B> {
             }
             Message::SaveMap => {
                 std::fs::create_dir_all("assets/maps");
-                match self.mapgen_map {
+                match self.mapgen_map.take() {
                     Some(world) => {world.to_json("assets/maps/mapgen.json")},
                     None => {},
                 }
-                self.mapgen_map = None;
             }
             Message::GenerateMap => {
                 let mut world: crate::World = crate::World::new();
 
-                let mut locality_names: Vec<&str> = resources.locality_names.iter().map(|s| s.as_str()).collect();
+                let mut locality_names: Vec<&str> = self.resources.locality_names.iter().map(|s| s.as_str()).collect();
 
-                world.generate_from_template(&self.mapgen_ui, &mut locality_names, &resources.init_layout);
+                world.generate_from_template(&self.mapgen_ui, &mut locality_names, &self.resources.init_layout);
 
-                let (width, height) = (900.0.x(), 900.0.y());
-                let thumb_bytes = backend.get_map_thumbnail(&world, width, height, resources).await;
-                self.thumb = Some(Handle::from_rgba(width as u32, height as u32, thumb_bytes));
-
+                self.thumb = None;
                 self.mapgen_map = Some(world);
             }
             Message::Exit => {
@@ -494,7 +534,6 @@ impl<B: Backend> Ui<B> {
             }
             _ => {}
         }
-        self
     }
 }
 
@@ -535,7 +574,7 @@ fn get_main_button(display_text: &str, message: Message) -> Button<Message> {
 // }
 
 // fn get_sp_menu<'a>(state: &'a Ui) -> Container<'a, Message> {
-fn get_sp_menu<'a, B: Backend>(state: &'a Ui<B>, width: f32) -> Vec<Column<'a, Message>> {
+fn get_sp_menu<'a>(state: &'a Ui, width: f32) -> Vec<Column<'a, Message>> {
     let mut map_text = state.scenario.as_str();
     if map_text.is_empty() {map_text = "Choose Map";}
 
@@ -637,7 +676,7 @@ fn get_sp_menu<'a, B: Backend>(state: &'a Ui<B>, width: f32) -> Vec<Column<'a, M
         opt.as_ref().map(|v| v.as_static()).unwrap_or("None")
     }
 
-    fn get_template_param<B: Backend>(ui: &Ui<B>, param: crate::gen::TemplateFields) -> &str {
+    fn get_template_param(ui: &Ui, param: crate::gen::TemplateFields) -> &str {
         match param {
             // Some(mui) => match param {
                 crate::world::gen::TemplateFields::Name => ui.mapgen_ui.name,
@@ -695,7 +734,7 @@ fn get_sp_menu<'a, B: Backend>(state: &'a Ui<B>, width: f32) -> Vec<Column<'a, M
     m
 }
 
-fn get_mp_offline_menu<'a, B: Backend>(state: &Ui<B>, scaling: f32) -> Column<'a, Message> {
+fn get_mp_offline_menu<'a>(state: &Ui, scaling: f32) -> Column<'a, Message> {
     column!()
                 .push(text_input(&format!("Address: {}", "127.0.0.1:8000"), &state.ip_address)
                         .size(64.0.xy())
@@ -710,7 +749,7 @@ fn get_mp_offline_menu<'a, B: Backend>(state: &Ui<B>, scaling: f32) -> Column<'a
                 .spacing(20.0.y())
 }
 
-fn get_mp_online_menu<'a, B: Backend>(state: &Ui<B>, scaling: f32) -> Column<'a, Message> {
+fn get_mp_online_menu<'a>(state: &Ui, scaling: f32) -> Column<'a, Message> {
     let status_text = match state.endpoint_type {
         EndpointType::Client => "Connected to",
         EndpointType::Server => "Hosting at",
@@ -745,142 +784,131 @@ fn get_scenario_list() -> Vec<std::fs::DirEntry> {
         .collect()
 }
 
-pub async fn main_menu<'a, B: Backend>(backend: &B, resources: &mut GameResources) -> (bool, Ui<B>) {
-    let mut state = Ui::<B>::new();
-    let mut interface = iced_macroquad::Interface::<Message>::new();
+fn build_ui_for_state(state: &Ui) -> Element<Message, Theme> {
+    let scaling = 1.0.x();
+    match state.menu.get_state() {
+        State::Main => center(scrollable(column!()
+            .push(get_main_button("Play", Message::Transition(Input::ToSingle)))
+            .push(get_main_button("Multiplayer", Message::Transition(Input::ToMulti)))
+            .push(get_main_button("Settings", Message::Transition(Input::ToSettings)))
+            .push(get_main_button("Exit", Message::Exit))
+            .spacing(20.0.y()))
+        ).into(),
 
-    let dark_palette = Palette {
-        // background: Color::from_rgb8(0x18, 0x1B, 0x1F), // deep slate
-        background: Color::from_rgb8(0x00, 0x00, 0x00), // deep slate
-        text:       Color::WHITE,                      // high contrast
-        primary:    Color::from_rgb8(0x2A, 0x2F, 0x36), // soft gunmetal
-        success:    Color::from_rgb8(0xA0, 0xFF, 0xB0), // minty green
-        danger:     Color::from_rgb8(0xFF, 0x5C, 0x5C), // coral red
-    };
-    let dark_theme = Theme::custom("Nightshade".to_string(), dark_palette);
-    interface.set_theme(dark_theme);
-
-    // interface.set_theme(Theme::Moonfly);
-    let mut messages = Vec::new();
-
-    font::load(vec![FONT.into()]);
-
-    while !state.exit {
-        // poll
-        if macroquad::prelude::is_key_pressed(macroquad::prelude::KeyCode::Escape) {
-            messages.push(Message::Transition(Input::Back));
+        State::Single => {
+            // let m = center(scrollable_h(row!()
+            //     .push(
+            //         column!(lhs_panel.height(1200.0.y()).width(1240.0.x()), lhs_buttons.width(1200.0.x()))
+            //     )
+            //     .push(
+            //         column!(rhs_panel.height(1200.0.y()))
+            //     )
+            //     .spacing(20.0.x())).height(1800.0.y()).width(2500.0.x()));
+            let cols = get_sp_menu(&state, 1200.0);
+            let cols_e: Vec<Element<'_, Message, Theme>> = cols.into_iter().map(Into::into).collect();
+            // center(scrollable_h(
+            //         Row::with_children(cols_e).spacing(20.0.x())
+            //     ).height(1800.0.y()).width(2500.0.x())
+            // ).into()
+            container(scrollable_h(
+                    Row::with_children(cols_e).spacing(20.0.x())
+                ).height(1800.0.y()).width(2500.0.x())
+            ).center_y(Length::Fixed(1600.0.y())).into()
         }
 
-        for message in messages.drain(..) {
-            state = state.update(message, backend, resources).await;
+        State::Multi => match state.endpoint_type {
+            EndpointType::Offline => center(get_mp_offline_menu(&state, scaling)).into(),
+            _ => center(get_mp_online_menu(&state, scaling)).into(),
+        } 
+
+        State::Lobby => {
+            let chatlog: &Vec<ChatMsg> = state.endpoint.get_chatlog();//state.endpoint.get_chatlog();
+            let chatlog_: Vec<String> = chatlog.into_iter().map(|msg| msg.to_string()).collect();
+            let slog: Vec<Text> = chatlog_.into_iter().map(|msg| Text::new(msg.clone()).size(64.0.xy()).into()).collect();
+            let elog = slog.into_iter().map(|t| <Text<'_, Theme, Renderer> as Into<Element<Message, Theme>>>::into(t));
+            // let elog = slog.iter().map(|t| t.into());
+
+            let chat_column = Column::with_children(
+                // chatlog.iter().map(|msg| Element::from(Text::from(msg.to_string().as_str()))).collect::<Vec<Element<_, _>>>()
+                elog
+                // todo!()
+            );
+            // column!(lhs_panel.height(1200.0.y()).width(1240.0.x()), lhs_buttons.width(1200.0.x())),
+            // column!(rhs_panel.height(1200.0.y()))
+            let mut sp = get_sp_menu(&state, 800.0);
+            // sp[0] = std::mem::replace(&mut sp[0], Column::new()).width(800.0.x());
+            // sp[1] = std::mem::replace(&mut sp[0], Column::new()).width(800.0.x());
+            let sp_e: Vec<Element<'_, Message, Theme>> = sp.into_iter().map(Into::into).collect();
+            center(
+                //scrollable_h(
+                row!()
+                    .push(
+                        column!()
+                            .push(container(scrollable(chat_column)).height(1250.0.y()))
+                            .push(
+                                text_input("press ENTER to send", &state.chat_message)
+                                    .on_input(Message::ChatMessageChanged)
+                                    .on_submit(Message::SendChatMessage)
+                                    .size(64.0.xy()),
+                            ).width(800.0.x())
+                    )
+                    .push(
+                        column!().push(scrollable(Column::with_children(
+                            state
+                                .players
+                                .iter()
+                                .map(|(i, p)| container(text(p.to_string())).into()),
+                        ))),
+                    )
+                    .extend(sp_e)
+                    .spacing(20.0.x())
+            )
+            .into()
+        },
+
+        State::Map => {column!()
+            .push(get_main_button("Generate New", Message::Transition(Input::ToMapgen)))
+            .push(container(scrollable(Column::with_children(
+                get_scenario_list().into_iter()
+                    .map(|r|
+                        button(text(r.file_name().into_string().unwrap()))
+                        .on_press(Message::SetScenario(r.path().display().to_string()))
+                        .into()
+                    )
+                ))).height(1500.0.x()))
+            .into()
         }
 
-        state.endpoint.tick_without_component();
+        State::Game => {
+            column!().into()
+            // handled elsewhere
 
-        // clear_background(LIGHTGRAY);
-        let scaling = 1.0.x();
+            // if matches!(state.endpoint_type, EndpointType::Server) {
+            //     state.endpoint.send
+            // }
+        }
+        _ => {panic!("menu panic");}
+    }
+}
 
-        let mut ui = match state.menu.get_state() {
-            State::Main => center(scrollable(column!()
-                .push(get_main_button("Play", Message::Transition(Input::ToSingle)))
-                .push(get_main_button("Multiplayer", Message::Transition(Input::ToMulti)))
-                .push(get_main_button("Settings", Message::Transition(Input::ToSettings)))
-                .push(get_main_button("Exit", Message::Exit))
-                .spacing(20.0.y()))
-            ).into(),
+impl IntoAny for Ui {
+    fn into_any(self: Box<Self>) -> Box<dyn std::any::Any> {
+        self
+    }
+}
 
-            State::Single => {
-                // let m = center(scrollable_h(row!()
-                //     .push(
-                //         column!(lhs_panel.height(1200.0.y()).width(1240.0.x()), lhs_buttons.width(1200.0.x()))
-                //     )
-                //     .push(
-                //         column!(rhs_panel.height(1200.0.y()))
-                //     )
-                //     .spacing(20.0.x())).height(1800.0.y()).width(2500.0.x()));
-                let cols = get_sp_menu(&state, 1200.0);
-                let cols_e: Vec<Element<'_, Message, Theme>> = cols.into_iter().map(Into::into).collect();
-                // center(scrollable_h(
-                //         Row::with_children(cols_e).spacing(20.0.x())
-                //     ).height(1800.0.y()).width(2500.0.x())
-                // ).into()
-                container(scrollable_h(
-                        Row::with_children(cols_e).spacing(20.0.x())
-                    ).height(1800.0.y()).width(2500.0.x())
-                ).center_y(Length::Fixed(1600.0.y())).into()
-            }
+impl<B> Component<B> for Ui where B: Backend + 'static {
+    type Message = Message;
+    fn draw(&self, layout: &Layout<f32>, backend: &mut B, resources: &GameResources, time: f32) {
+        if self.thumb.is_none() && self.mapgen_map.is_some() {
+            let (width, height) = (900.0.x(), 900.0.y());
+            let thumb_bytes = pollster::block_on(async {
+                return backend.get_map_thumbnail(&self.mapgen_map.as_ref().unwrap(), width, height, resources).await;
+            });
+            backend.set_buffer(thumb_bytes);
+        }
 
-            State::Multi => match state.endpoint_type {
-                EndpointType::Offline => center(get_mp_offline_menu(&state, scaling)).into(),
-                _ => center(get_mp_online_menu(&state, scaling)).into(),
-            } 
-
-            State::Lobby => {
-                let chatlog: &Vec<ChatMsg> = state.endpoint.get_chatlog();//state.endpoint.get_chatlog();
-                let chatlog_: Vec<String> = chatlog.into_iter().map(|msg| msg.to_string()).collect();
-                let slog: Vec<Text> = chatlog_.into_iter().map(|msg| Text::new(msg.clone()).size(64.0.xy()).into()).collect();
-                let elog = slog.into_iter().map(|t| <Text<'_, Theme, Renderer> as Into<Element<Message, Theme>>>::into(t));
-                // let elog = slog.iter().map(|t| t.into());
-
-                let chat_column = Column::with_children(
-                    // chatlog.iter().map(|msg| Element::from(Text::from(msg.to_string().as_str()))).collect::<Vec<Element<_, _>>>()
-                    elog
-                    // todo!()
-                );
-                // column!(lhs_panel.height(1200.0.y()).width(1240.0.x()), lhs_buttons.width(1200.0.x())),
-                // column!(rhs_panel.height(1200.0.y()))
-                let mut sp = get_sp_menu(&state, 800.0);
-                // sp[0] = std::mem::replace(&mut sp[0], Column::new()).width(800.0.x());
-                // sp[1] = std::mem::replace(&mut sp[0], Column::new()).width(800.0.x());
-                let sp_e: Vec<Element<'_, Message, Theme>> = sp.into_iter().map(Into::into).collect();
-                center(
-                    //scrollable_h(
-                    row!()
-                        .push(
-                            column!()
-                                .push(container(scrollable(chat_column)).height(1250.0.y()))
-                                .push(
-                                    text_input("press ENTER to send", &state.chat_message)
-                                        .on_input(Message::ChatMessageChanged)
-                                        .on_submit(Message::SendChatMessage)
-                                        .size(64.0.xy()),
-                                ).width(800.0.x())
-                        )
-                        .push(
-                            column!().push(scrollable(Column::with_children(
-                                state
-                                    .players
-                                    .iter()
-                                    .map(|(i, p)| container(text(p.to_string())).into()),
-                            ))),
-                        )
-                        .extend(sp_e)
-                        .spacing(20.0.x())
-                )
-                .into()
-            },
-
-            State::Map => {column!()
-                .push(get_main_button("Generate New", Message::Transition(Input::ToMapgen)))
-                .push(container(scrollable(Column::with_children(
-                    get_scenario_list().into_iter()
-                        .map(|r|
-                            button(text(r.file_name().into_string().unwrap()))
-                            .on_press(Message::SetScenario(r.path().display().to_string()))
-                            .into()
-                        )
-                    ))).height(1500.0.x()))
-                .into()
-            }
-
-            State::Game => {
-                // if matches!(state.endpoint_type, EndpointType::Server) {
-                //     state.endpoint.send
-                // }
-                break
-            }
-            _ => {panic!("menu panic");}
-        };
+        let mut view = build_ui_for_state(&self);
 
         let dark_rounded_style = move |_theme: &Theme| crate::ui::container::Style {
             // solid black background
@@ -890,19 +918,64 @@ pub async fn main_menu<'a, B: Backend>(backend: &B, resources: &mut GameResource
             ..crate::ui::container::Style::default()
         };
 
-        ui = Container::new(ui)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(dark_rounded_style)
-        .into();
+        view = Container::new(view)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .style(dark_rounded_style)
+            .into();
 
-        interface.view(&mut messages, ui);
+        let mut messages = {
+            let mut guard = self.messages.lock().unwrap();
+            // Take the Vec out of the Option, or use an empty Vec if None
+            std::mem::take(guard.as_mut().unwrap_or(&mut vec![]))
+        };
 
-        B::next_frame().await
+        // Pass the Vec to backend
+        backend.render_ui(&mut messages, view);
+
+        // Put it back into the Mutex<Option<Vec<T>>>
+        {
+            let mut guard = self.messages.lock().unwrap();
+            *guard = Some(messages);
+        }
+
     }
+    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Self::Message {
+        match backend.take_buffer() {
+            Some(pixels) => self.thumb = Some(Handle::from_rgba(900.0.x() as u32, 900.0.y() as u32, pixels)),
+            None => {}
+        }
 
-    (state.exit, state)
+        match backend.poll_inputs(layout) {
+            network::Message::Exit => Message::Transition(Input::Back),
+            _ => Message::Tick,
+        }
+
+    }
+    fn update(mut self: Box<Self>, message: Self::Message) -> Box<dyn ErasedComponent<B>> {
+        self.endpoint.tick_without_component();
+
+        self.messages.lock().unwrap().as_mut().map(|v| v.push(message));
+
+        let drained_messages = {
+            let mut guard = self.messages.lock().unwrap();
+            std::mem::take(guard.as_mut().unwrap_or(&mut vec![]))
+        };
+
+        for message in drained_messages {
+            self._update(message);
+        }
+
+        let state = self.menu.get_state();
+        if matches!(state, State::Game) {
+            return App::from_ui(*self)
+        }
+        
+        self
+    }
 }
+
+
 
 use rust_fsm::*;
 
@@ -968,12 +1041,12 @@ pub fn test_ui() {
 impl<M: Mode + 'static, B: Backend + 'static> App<M, B, Game>
 where 
     M: crate::network::NotOffline, 
-    Game: Component<B>, 
+    Game: Component<B, Message = network::Message>, 
     <M as Mode>::Endpoint: 'static,
-    App<M, B, Game>: Component<B>,
+    App<M, B, Game>: Component<B, Message = network::Message>,
 {
-    pub fn from_ui(mut ui: Ui<B>) -> Box<dyn Component<B>> {
-        let replacement: Box<dyn Chat<B>> = Box::new(Offline);
+    pub fn from_ui(mut ui: Ui) -> Box<dyn ErasedComponent<B>> {
+        let replacement: Box<dyn Chat> = Box::new(Offline);
         // let endpoint = Client::new("").unwrap().into();
         let endpoint_ = std::mem::replace(&mut ui.endpoint, replacement);
         let endpoint = *endpoint_.into_any().downcast::<M::Endpoint>().unwrap();
@@ -994,9 +1067,9 @@ where
 
 impl<B: Backend + 'static> App<Offline, B, Game>
 where 
-    Game: Component<B>,
+    Game: Component<B, Message = network::Message>,
 {
-    pub fn from_ui(mut ui: Ui<B>) -> Box<dyn Component<B>> {
+    pub fn from_ui(mut ui: Ui) -> Box<dyn ErasedComponent<B>> {
         let players_map = std::mem::take(&mut ui.players);
         let players: Vec<Player> = players_map.into_values().collect();
         //let rules = Ruleset::default(ui.victory_condition, &players); // or empty vector?

@@ -1,4 +1,4 @@
-use crate::{backend::Backend, cubic::{self, Layout}, game::{Game, GameResources}, inputs::InputState, network::Message};
+use crate::{backend::Backend, cubic::{self, Layout}, game::{Game, GameResources}, inputs::InputState, network::{ErasedComponent, Message}};
 use crate::game;
 
 use game::VictoryCondition;
@@ -208,8 +208,9 @@ impl Editor {
 // }
 
 impl<B: Backend> Component<B> for Editor {
+    type Message = Message;
     // type Swap = crate::Game;
-    fn draw(&self, &layout: &Layout<f32>, backend: &B, resources: &GameResources, time: f32) {
+    fn draw(&self, &layout: &Layout<f32>, backend: &mut B, resources: &GameResources, time: f32) {
         // crate::draw_editor(&self, &layout, assets, time);
         backend.draw_base_tiles(&self.world, &layout, time);
         backend.draw_game_tiles(&self.world, &layout);
@@ -218,7 +219,7 @@ impl<B: Backend> Component<B> for Editor {
         B::draw_army_info(&self.world, &layout);
         // draw_all_locality_names(&editor.world, &layout, &assets); // TODO: Implement in wgpu renderer
     }
-    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Message {
+    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Self::Message {
         let mut message = backend.poll_inputs(layout);
 
         if let Some(cube) = backend.poll_click_inputs(layout) {
@@ -240,12 +241,12 @@ impl<B: Backend> Component<B> for Editor {
     // fn swap(self) -> impl Component + IntoAny {
     //     crate::Game::from(self)
     // }
-    fn update(mut self: Box<Self>, message: Message) -> Option<Box<dyn Component<B>>> {
+    fn update(mut self: Box<Self>, message: Self::Message) -> Box<dyn ErasedComponent<B>> {
         let swap = match message {
             Message::Save => {
                 std::fs::create_dir_all("assets/scenarios");
                 self.to_json("assets/scenarios/quicksave.json");
-                self as Box<dyn Component<B>>
+                self as Box<dyn ErasedComponent<B>>
             },
             Message::Load => {
                 std::fs::create_dir_all("assets/scenarios");
@@ -253,7 +254,7 @@ impl<B: Backend> Component<B> for Editor {
                 self
             },
             Message::Swap => {
-                Box::new(Game::from(*self)) as Box<dyn Component<B>>
+                Box::new(Game::from(*self)) as Box<dyn ErasedComponent<B>>
             }
             Message::ToggleLayer => {
                 self.toggle_layer();
@@ -266,7 +267,7 @@ impl<B: Backend> Component<B> for Editor {
             _ => {self}
         };
 
-        Some(swap)
+        swap
     }
     // fn empty() -> Self {
     //     let players = vec!();

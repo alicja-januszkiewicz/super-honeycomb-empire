@@ -1,7 +1,8 @@
 mod draw;
 mod input;
 
-extern crate macroquad;
+use std::io::Read;
+use std::sync::Mutex;
 
 use macroquad::camera::{set_camera, set_default_camera, Camera2D};
 use macroquad::color::{*};
@@ -25,6 +26,8 @@ use cubic::{Cube, Layout, OrientationKind, pixel_to_cube};
 
 use crate::backend;
 use backend::{Backend, Color};
+
+use crate::ui::{self, get_ui_theme};
 
 use draw::{Assets, owner_to_color};
 
@@ -143,6 +146,8 @@ pub struct Macroquad {
     assets: Option<Assets>,
     init_layout: Layout<f32>,
     key_mapper: KeyMapper,
+    buffer: Mutex<Option<Vec<u8>>>,
+    interface: iced_macroquad::Interface<ui::Message, iced_macroquad::iced::Theme>
 }
 
 impl Macroquad {
@@ -156,10 +161,23 @@ impl Macroquad {
 
 impl Backend for Macroquad {
     // type Assets = Assets;
+    fn render_ui<'a>(&mut self, messages: &mut Vec<ui::Message>, view: ui::View<'a>) {
+        self.interface.view(messages, view);
+    }
+    fn set_buffer(&mut self, data: Vec<u8>) {
+        *self.buffer.lock().unwrap() = Some(data);
+    }
+    fn take_buffer(&self) -> Option<Vec<u8>> {
+        self.buffer.lock().unwrap().take()
+    }
     fn new(init_layout: Layout<f32>) -> Self {
         let assets = None;
         let key_mapper = input::KeyMapper::new();
-        Self { assets, init_layout, key_mapper }
+        let buffer = Mutex::new(None);
+        let mut interface = iced_macroquad::Interface::<ui::Message>::new();
+        let theme = get_ui_theme();
+        interface.set_theme(theme);
+        Self { assets, init_layout, key_mapper, buffer, interface }
     }
     fn run_loop<F>(self, mut f: F)
     where
@@ -177,9 +195,7 @@ impl Backend for Macroquad {
             loop {
                 let dt = macroquad::time::get_frame_time();
                 let exit = f(&mut backend, dt);
-                if exit {
-                    break;
-                }
+                if exit { break; }
                 next_frame().await;
             }
         });

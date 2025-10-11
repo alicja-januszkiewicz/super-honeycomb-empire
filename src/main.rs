@@ -17,6 +17,7 @@ mod network;
 mod cli;
 mod ui;
 
+use ui::Ui;
 use clap::Parser;
 use fog::*;
 use ai::*;
@@ -217,16 +218,17 @@ fn new_game(resources: &mut GameResources) -> Game {
 
 // struct App<T: Component>(T);
 
-fn get_game<B: Backend, T: Component<B>> (resources: &mut GameResources) -> Box<dyn Component<B>> {
+fn get_game<B: Backend, T: Component<B>> (resources: &mut GameResources) -> Box<dyn Component<B, Message = network::Message>> {
     Box::new(new_game(resources))
 }
 
-fn get_app<B, M>(resources: &mut GameResources) -> Box<dyn Component<B>>
+fn get_app<M, B>(resources: &mut GameResources) -> Box<dyn ErasedComponent<Macroquad>>
 where
     B: Backend,
     M: network::Mode + 'static,
-    M::Endpoint: Chat<B> + 'static,
-    App<M, Macroquad, Game>: Component<B>,
+    M::Endpoint: Chat + 'static,
+    App<M, Macroquad, Game>: Component<Macroquad, Message = network::Message>, 
+    // <network::App<M, B, C> as network::Component<B>>::Message: ,
 {
     let mut game = new_game(resources);
     let args = Cli::parse();
@@ -237,10 +239,10 @@ where
     }
 
     // Construct a placeholder endpoint
-    let mut endpoint: Box<dyn Chat<B>> = Box::new(Offline);
+    let mut endpoint: Box<dyn Chat> = Box::new(Offline);
 
     // Replace it with the runtime choice
-    let replacement: Box<dyn Chat<B>> = match args.mode {
+    let replacement: Box<dyn Chat> = match args.mode {
         cli::Mode::Client => Box::new(Client::new(&args.addrs).unwrap()),
         cli::Mode::Server => Box::new(Server::new(&args.addrs).unwrap()),
         cli::Mode::Offline => Box::new(Offline),
@@ -397,32 +399,60 @@ fn main() {
 
 
     let mut resources = load_resources();
-    let backend = Macroquad::new(resources.init_layout);
-    // let app: &mut dyn Component<crate::backend::mquad::Macroquad> = &mut get_app(&mut resources);
+    let init_layout = resources.init_layout.clone();
+    let resources_box = std::rc::Rc::new(std::cell::RefCell::new(load_resources()));
+    let init_layout = resources_box.borrow().init_layout.clone();
+    let backend_box = Box::new(Macroquad::new(init_layout.clone()));
+    // let app: &mut dyn Component<crate::backend::mquad::Macroquad, Message = Message> = &mut get_app(&mut resources);
+    // let component = Some(&mut get_app(&mut resources));
+    // let mut component = Some(get_app::<network::Offline, Macroquad>(&mut resources));
+    let mut component: Option<Box<dyn ErasedComponent<Macroquad>>> = Some(Box::new(Ui::new()));
 
     // let mut component: Option<Box<dyn Component<crate::backend::mquad::Macroquad>>> = Some(get_app::<Macroquad, Game>(&mut resources));
     // let component = new_game(&mut resources);
 
     // let mut app= Some(Box::new(App::<Offline, Macroquad, Game>::new(component, endpoint)));
     // app = app as Box<dyn Component<Macroquad>>;
+    
+    let resources_box_clone = std::rc::Rc::clone(&resources_box);
 
-    let (mut exit, ui) = crate::ui::main_menu(&backend, &mut resources).await;
-    if exit {return};
-    let mut app = App::from_ui(ui, &mut resources);
 
+
+
+    // let component_box: std::rc::Rc<std::cell::RefCell<Box<dyn Component<Macroquad>>>> = std::rc::Rc::new(std::cell::RefCell::new(Box::new(network::Empty)));
+
+    // let mut exit = false;
+    // // let mut state = ui::Ui::<Macroquad>::new();
+
+    // let (exit, ui) = backend_box.run_loop(move |backend, time| {
+    //     let component_box = std::rc::Rc::clone(&component_box);
+    //     let resources_box = &resources_box_clone;
+    //     let mut resources = resources_box.borrow_mut();
+    //     let (exit, ui) = crate::ui::main_menu(backend, &mut resources);
+    //     // resources_box = Box::new(resources);
+    //     // let res = App::from_ui(ui);
+    //     // *component_box.borrow_mut() = res;
+    //     (exit, ui)
+    // });
+
+
+
+
+    // let mut resources = resources_box;
+    let backend_box = Box::new(Macroquad::new(init_layout.clone()));
+    // if exit {return};
+    // let mut app = App::from_ui(ui, &mut resources);
+
+    // let mut component = Some(get_app::<Macroquad, _>(&mut resources.borrow_mut()));
     // let mut app = Some(get_app::<Macroquad, _>(&mut resources));
 
-    let mut layout = resources.init_layout.clone();
+    let mut layout = init_layout.clone();
     
+    // let mut component = Some(get_app::<Macroquad, _>(&mut resources.borrow_mut()));
     let mut exit = false;
-    backend.run_loop(move |backend, time| {
-        let message = app.as_mut().unwrap().poll(&mut layout, backend);
-        app.as_ref().unwrap().draw(&layout, backend, &resources, time);
-        let mut app_box = app.take().unwrap();
-        if matches!(message, Message::Exit) {exit = true}
-        app = app_box.update(message);
-        // app = new_app;
-
+    backend_box.run_loop(move |backend, _time| {
+        let (next_component, exit) = component.take().unwrap().step(&mut layout, backend, &resources, _time);
+        component = Some(next_component);
         exit
     });
 }

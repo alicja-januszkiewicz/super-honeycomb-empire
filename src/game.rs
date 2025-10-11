@@ -21,6 +21,7 @@ use strum::{EnumIter, Display};
 use wgpu::core::device::resource;
 
 use crate::backend;
+use crate::network::ErasedComponent;
 use crate::network::Message;
 use backend::Backend;
 
@@ -321,12 +322,13 @@ impl Game {
 }
 
 impl<B: Backend> Component<B> for Game {
+    type Message = network::Message;
     // type Swap = Editor;
-    fn draw(&self, &layout: &Layout<f32>, backend: &B, resources: &GameResources, time: f32) {
+    fn draw(&self, &layout: &Layout<f32>, backend: &mut B, resources: &GameResources, time: f32) {
         //pub fn draw(game: &Game, &layout: &Layout<f32>, assets: &Assets, resources: &GameResources, time: f32) {
-        let darkgrey = [0.31f32, 0.31, 0.31, 1.0].into();
+        // let darkgrey = [0.31f32, 0.31, 0.31, 1.0].into();
         let black = [0.0f32, 0.0, 0.0, 1.0].into();
-        B::clear(darkgrey);
+        // B::clear(darkgrey);
 
         let view = self.current_player_index()
             .and_then(|pid| self.player_views.get(&pid))
@@ -367,7 +369,7 @@ impl<B: Backend> Component<B> for Game {
             B::draw_circle(x, y, 8., color);
         }
     }
-    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Message {
+    fn poll(&mut self, layout: &mut Layout<f32>, backend: &B) -> Self::Message {
         let mut message = backend.poll_inputs(layout);
 
         // Potentially overwrite the previous command; 1 input per frame allowed, clicking takes precedence.
@@ -382,13 +384,13 @@ impl<B: Backend> Component<B> for Game {
         message
     }
 
-    fn update(mut self: Box<Self>, message: Message) -> Option<Box<dyn Component<B>>> {
+    fn update(mut self: Box<Self>, message: Self::Message) -> Box<dyn ErasedComponent<B>> {
         self._update();
 
         let swap = match message {
             Message::Command(command) => {
                 self.execute_command(&command);
-                self as Box<dyn Component<B>>
+                self as Box<dyn ErasedComponent<B>>
             },
             Message::Save => {
                 std::fs::create_dir_all("assets/saves");
@@ -405,13 +407,13 @@ impl<B: Backend> Component<B> for Game {
                 self
             },
             Message::Swap => {
-                Box::new(Editor::from(*self)) as Box<dyn Component<B>>
+                Box::new(Editor::from(*self)) as Box<dyn ErasedComponent<B>>
                 // swap = Some(self as Box<dyn Component<B>>);
             }
             _ => {self}
         };
 
-        Some(swap)
+        swap
 
     }
     // fn empty() -> Self {
