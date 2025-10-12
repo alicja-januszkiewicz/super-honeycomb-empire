@@ -12,39 +12,18 @@ use backend::Backend;
 static HEX_VERTICES: [f32;1] = [0.1];
 static HEX_INDICES : [usize;1] = [1];
 
-// pub struct Wgpu<'a> {
-//     textures: Vec<wgpu::Texture>,
-//     font_system: cosmic_text::FontSystem,
-
-//     instance: wgpu::Instance,
-//     surface: Option<wgpu::Surface<'a>>,
-//     adapter: wgpu::Adapter,
-//     device: wgpu::Device,
-//     queue: wgpu::Queue,
-//     config: wgpu::SurfaceConfiguration,
-//     window: Arc<winit::window::Window>,
-//     renderer: Renderer, // our Tile/Overlay/UI composited renderer
-// }
-
-struct WgpuCore {
-    window: Arc<winit::window::Window>,
+pub struct Wgpu {
+    // window must be 'static for Surface
+    window: &'static winit::window::Window,
     instance: wgpu::Instance,
-    textures: Vec<wgpu::Texture>,
-    font_system: cosmic_text::FontSystem,
-}
-
-struct WgpuSurface {
     surface: wgpu::Surface<'static>,
     adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     renderer: Renderer,
-}
-
-struct Wgpu {
-    core: WgpuCore,
-    surface: Option<WgpuSurface>,
+    textures: Vec<wgpu::Texture>,
+    font_system: cosmic_text::FontSystem,
 }
 
 struct TileRenderer {
@@ -197,63 +176,30 @@ impl Renderer {
 //     }
 // }
 
-impl WgpuSurface {
-    fn new(core: &'static mut WgpuCore) -> Self {
-        let surface = unsafe { core.instance.create_surface(&core.window) }.unwrap();
-
-        // 3. Pick adapter + create device/queue
-        let adapter = pollster::block_on(core.instance.request_adapter(&wgpu::RequestAdapterOptions {
-            compatible_surface: Some(&surface),
-            ..Default::default()
-        })).expect("No suitable GPU adapter");
-
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor::default(),
-            None,
-        )).unwrap();
-
-        // 4. Configure surface (swapchain)
-        let size = core.window.inner_size();
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface.get_capabilities(&adapter).formats[0],
-            width: size.width,
-            height: size.height,
-            present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: wgpu::CompositeAlphaMode::Auto,
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        surface.configure(&device, &config);
-        // 5. Initialize Renderer (TileRenderer + Overlay + UI)
-        let renderer = Renderer::new(&device, &config);
-
-        Self { surface, adapter, device, queue, config, renderer }
-    }
-}
-
-impl WgpuCore {
-    fn new() -> Self {
-        let textures = vec![];
-        let font_system = cosmic_text::FontSystem::new();
-        // 1. Create window (via winit)
-        let event_loop = winit::event_loop::EventLoop::new().unwrap();
-        let raw_window = winit::window::WindowBuilder::new()
-            .with_title("YourGame")
-            .build(&event_loop)
-            .unwrap();
-        let window = Arc::new(raw_window);
-
-        // 2. Create WGPU instance + surface
-        let instance = wgpu::Instance::default();
-
-        Self { window, instance, textures, font_system }
-    }
-}
-
 impl Wgpu {
-    fn init_surface(&'static mut self) {
-        self.surface = Some(WgpuSurface::new(&mut self.core));
+    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        if new_size.width > 0 && new_size.height > 0 {
+            self.config.width = new_size.width;
+            self.config.height = new_size.height;
+            self.surface.configure(&self.device, &self.config);
+        }
+    }
+    fn get_size(&self) -> winit::dpi::PhysicalSize<u32> {
+        self.window.inner_size()
+    }
+    fn render_frame(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let frame = self.surface.get_current_texture()?;
+        let view = frame.texture.create_view(&Default::default());
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+
+        // This is where you’ll call your Renderer
+        self.renderer
+            .render(&self.device, &self.queue, &mut encoder, &view);
+
+        self.queue.submit(Some(encoder.finish()));
+        frame.present();
+
+        Ok(())
     }
 }
 
@@ -270,34 +216,111 @@ impl Backend for Wgpu {
         todo!()
     }
 
-    fn init(&'static mut self) {
-        self.init_surface();
-    }
-
     fn new(init_layout: Layout<f32>) -> Self {
-        // let textures = vec![];
-        // let font_system = cosmic_text::FontSystem::new();
-        // // 1. Create window (via winit)
-        // let event_loop = winit::event_loop::EventLoop::new().unwrap();
-        // let raw_window = winit::window::WindowBuilder::new()
-        //     .with_title("YourGame")
-        //     .build(&event_loop)
-        //     .unwrap();
-        // let window = Arc::new(raw_window);
+        let textures = vec![];
+        let font_system = cosmic_text::FontSystem::new();
 
-        // // 2. Create WGPU instance + surface
-        // let instance = wgpu::Instance::default();
+        // 1. Create window (via winit)
+        let event_loop = winit::event_loop::EventLoop::new().unwrap();
+        let raw_window = winit::window::WindowBuilder::new()
+            .with_title("SHE")
+            .build(&event_loop)
+            .unwrap();
+        // 1.2 Wrap it in ManuallyDrop
+        let window: &'static winit::window::Window = {
+            let boxed = Box::new(raw_window);
+            Box::leak(boxed) // leaks the Box, returning &'static
+        };
 
-        let core = WgpuCore::new();
-        let surface = None;
+        // 2. Create WGPU instance + surface
+        let instance = wgpu::Instance::default();
+        let surface = unsafe { instance.create_surface(window) }.unwrap();
 
-        Self { core, surface }
+        // 3. Pick adapter + create device/queue
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            compatible_surface: Some(&surface),
+            ..Default::default()
+        })).expect("No suitable GPU adapter");
+
+        let (device, queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor::default(),
+            None,
+        )).unwrap();
+
+        // 4. Configure surface (swapchain)
+        let size = window.inner_size();
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface.get_capabilities(&adapter).formats[0],
+            width: size.width,
+            height: size.height,
+            present_mode: wgpu::PresentMode::Fifo,
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+        };
+        surface.configure(&device, &config);
+        // 5. Initialize Renderer (TileRenderer + Overlay + UI)
+        let renderer = Renderer::new(&device, &config);
+
+        Self { surface, adapter, device, queue, config, renderer, window, instance, textures, font_system }
     }
 
-    fn run_loop<F>(self, f: F)
+    fn run_loop<F>(mut self, mut f: F)
     where
-        F: 'static + FnMut(&mut Self, f32) -> bool {
-        todo!()
+        F: 'static + FnMut(&mut Self, f32) -> bool,
+    {
+        use winit::event::{Event, WindowEvent};
+        use winit::event_loop::EventLoop;
+
+        let event_loop = EventLoop::new().unwrap();
+        let window_id = self.window.id();
+        let mut last_render_time = std::time::Instant::now();
+
+        event_loop
+            .run(move |event, elwt| {
+                match event {
+                    Event::WindowEvent {
+                        ref event,
+                        window_id: event_window_id,
+                    } if event_window_id == window_id => {
+                        match event {
+                            WindowEvent::CloseRequested => {
+                                elwt.exit();
+                            }
+                            WindowEvent::Resized(physical_size) => {
+                                self.resize(*physical_size);
+                            }
+                            WindowEvent::RedrawRequested => {
+                                let now = std::time::Instant::now();
+                                let dt = now.duration_since(last_render_time).as_secs_f32();
+                                last_render_time = now;
+
+                                // user-provided callback (update function)
+
+                                if f(&mut self, dt) {
+                                    elwt.exit();
+                                    return
+                                };
+
+                                match self.render_frame() {
+                                    Ok(_) => {}
+                                    Err(wgpu::SurfaceError::Lost) => self.resize(self.get_size()),
+                                    Err(wgpu::SurfaceError::OutOfMemory) => elwt.exit(),
+                                    Err(e) => eprintln!("Surface error: {:?}", e),
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    Event::AboutToWait => {
+                        // Trigger continuous rendering
+                        self.window.request_redraw();
+                    }
+                    _ => {}
+                }
+            })
+            .unwrap();
     }
 
     fn poll_inputs(&self, layout: &mut Layout<f32>) -> Message {

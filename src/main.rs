@@ -34,7 +34,13 @@ use network::*;
 use std::{collections::HashMap, f32::consts::PI, fs::File};
 use dbase;
 
-use crate::backend::{mquad::Macroquad, Backend};
+use crate::backend::Backend;
+
+#[cfg(feature="wgpu")]
+type BackendType = backend::wgpu::Wgpu;
+
+#[cfg(feature="mquad")]
+type BackendType = backend::mquad::Macroquad;
 
 // pub struct Assets<F: FontHandle, T: TextureHandle, M: MaterialHandle> {
 //     pub locality_names: Vec<String>,
@@ -222,12 +228,12 @@ fn get_game<B: Backend, T: Component<B>> (resources: &mut GameResources) -> Box<
     Box::new(new_game(resources))
 }
 
-fn get_app<M, B>(resources: &mut GameResources) -> Box<dyn ErasedComponent<Macroquad>>
+fn get_app<M, B>(resources: &mut GameResources) -> Box<dyn ErasedComponent<BackendType>>
 where
     B: Backend,
     M: network::Mode + 'static,
     M::Endpoint: Chat + 'static,
-    App<M, Macroquad, Game>: Component<Macroquad, Message = network::Message>, 
+    App<M, BackendType, Game>: Component<BackendType, Message = network::Message>, 
     // <network::App<M, B, C> as network::Component<B>>::Message: ,
 {
     let mut game = new_game(resources);
@@ -257,10 +263,10 @@ where
         cli::Mode::Offline => *endpoint_.into_any().downcast::<M::Endpoint>().unwrap(),
     };
 
-    Box::new(App::<M, Macroquad, Game>::new(game, endpoint))
+    Box::new(App::<M, BackendType, Game>::new(game, endpoint))
 }
 
-// fn get_app(resources: &mut GameResources) -> Box<dyn Component<Macroquad>> {
+// fn get_app(resources: &mut GameResources) -> Box<dyn Component<BackendType>> {
 //     let game: Game = new_game(resources);
 //     println!("about to create Box(Game)");
 //     let b = Box::new(game);
@@ -364,9 +370,9 @@ where
 //     let mut exit = false;
 
 //     let mut resources = load_resources();
-//     let backend = Macroquad::new(resources.init_layout).await;
-//     // let app: &mut dyn Component<crate::backend::mquad::Macroquad> = &mut get_app(&mut resources);
-//     let mut app: Box<dyn Component<crate::backend::mquad::Macroquad>> = get_app::<Macroquad, Game>(&mut resources);
+//     let backend = BackendType::new(resources.init_layout).await;
+//     // let app: &mut dyn Component<BackendType> = &mut get_app(&mut resources);
+//     let mut app: Box<dyn Component<BackendType>> = get_app::<BackendType, Game>(&mut resources);
 
 //     let mut layout = resources.init_layout.clone();
 
@@ -377,13 +383,13 @@ where
 //         // if is_key_pressed(KeyCode::F1) {
 //         //     app = app.swap();
 //         // }
-//         time += Macroquad::get_frame_time();
+//         time += BackendType::get_frame_time();
 //         exit = app.poll(&mut layout, &backend);
 //         // exit = backend.poll_events(|event| {
 //         //     app.poll(event, &mut layout);
 //         // });
 
-//         Macroquad::next_frame().await;
+//         BackendType::next_frame().await;
 //     }
 // }
 
@@ -402,27 +408,27 @@ fn main() {
     let init_layout = resources.init_layout.clone();
     let resources_box = std::rc::Rc::new(std::cell::RefCell::new(load_resources()));
     let init_layout = resources_box.borrow().init_layout.clone();
-    let backend_box = Box::new(Macroquad::new(init_layout.clone()));
-    // let app: &mut dyn Component<crate::backend::mquad::Macroquad, Message = Message> = &mut get_app(&mut resources);
-    // let component = Some(&mut get_app(&mut resources));
-    // let mut component = Some(get_app::<network::Offline, Macroquad>(&mut resources));
-    let mut component: Option<Box<dyn ErasedComponent<Macroquad>>> = Some(Box::new(Ui::new()));
 
-    // let mut component: Option<Box<dyn Component<crate::backend::mquad::Macroquad>>> = Some(get_app::<Macroquad, Game>(&mut resources));
+    // let app: &mut dyn Component<BackendType, Message = Message> = &mut get_app(&mut resources);
+    // let component = Some(&mut get_app(&mut resources));
+    // let mut component = Some(get_app::<network::Offline, BackendType>(&mut resources));
+    let mut component: Option<Box<dyn ErasedComponent<BackendType>>> = Some(Box::new(Ui::new()));
+
+    // let mut component: Option<Box<dyn Component<BackendType>>> = Some(get_app::<BackendType, Game>(&mut resources));
     // let component = new_game(&mut resources);
 
-    // let mut app= Some(Box::new(App::<Offline, Macroquad, Game>::new(component, endpoint)));
-    // app = app as Box<dyn Component<Macroquad>>;
+    // let mut app= Some(Box::new(App::<Offline, BackendType, Game>::new(component, endpoint)));
+    // app = app as Box<dyn Component<BackendType>>;
     
     let resources_box_clone = std::rc::Rc::clone(&resources_box);
 
 
 
 
-    // let component_box: std::rc::Rc<std::cell::RefCell<Box<dyn Component<Macroquad>>>> = std::rc::Rc::new(std::cell::RefCell::new(Box::new(network::Empty)));
+    // let component_box: std::rc::Rc<std::cell::RefCell<Box<dyn Component<BackendType>>>> = std::rc::Rc::new(std::cell::RefCell::new(Box::new(network::Empty)));
 
     // let mut exit = false;
-    // // let mut state = ui::Ui::<Macroquad>::new();
+    // // let mut state = ui::Ui::<BackendType>::new();
 
     // let (exit, ui) = backend_box.run_loop(move |backend, time| {
     //     let component_box = std::rc::Rc::clone(&component_box);
@@ -439,16 +445,16 @@ fn main() {
 
 
     // let mut resources = resources_box;
-    let backend_box = Box::new(Macroquad::new(init_layout.clone()));
+    let backend_box = Box::new(BackendType::new(init_layout.clone()));
     // if exit {return};
     // let mut app = App::from_ui(ui, &mut resources);
 
-    // let mut component = Some(get_app::<Macroquad, _>(&mut resources.borrow_mut()));
-    // let mut app = Some(get_app::<Macroquad, _>(&mut resources));
+    // let mut component = Some(get_app::<BackendType, _>(&mut resources.borrow_mut()));
+    // let mut app = Some(get_app::<BackendType, _>(&mut resources));
 
     let mut layout = init_layout.clone();
     
-    // let mut component = Some(get_app::<Macroquad, _>(&mut resources.borrow_mut()));
+    // let mut component = Some(get_app::<BackendType, _>(&mut resources.borrow_mut()));
     let mut exit = false;
     backend_box.run_loop(move |backend, _time| {
         let (next_component, exit) = component.take().unwrap().step(&mut layout, backend, &resources, _time);

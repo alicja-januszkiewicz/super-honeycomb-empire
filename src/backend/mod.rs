@@ -2,7 +2,7 @@ use crate::{cubic::Layout, game::{Game, GameResources}, network::{Component, Mes
 use crate::ui;
 
 #[cfg(feature="wgpu")]
-mod wgpu;
+pub mod wgpu;
 
 #[cfg(feature="mquad")]
 // #[cfg_attr(any(feature="mquad", rust_analyzer), path = "mquad/mod.rs")]
@@ -12,16 +12,16 @@ pub mod mquad;
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Color { pub r: f32, pub g: f32, pub b: f32, pub a: f32 }
 
-// impl From<[f32; 4]> for Color {
-//     fn from(value: [f32; 4]) -> Self {
-//         Self {r: value[0], g: value[1], b: value[2] , a: value[3]}
-//     }
-// }
+impl From<[f32; 4]> for Color {
+    fn from(value: [f32; 4]) -> Self {
+        Self {r: value[0], g: value[1], b: value[2] , a: value[3]}
+    }
+}
+
 
 pub trait Backend {
     // type Event;
     // type Assets;
-    fn init(&'static mut self);
     fn render_ui<'a>(&mut self, messages: &mut Vec<ui::Message>, view: ui::View<'a>);
 
     fn set_buffer(&mut self, data: Vec<u8>);

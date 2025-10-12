@@ -130,12 +130,6 @@ fn window_conf() -> Conf {
 
 // }
 
-impl From<[f32; 4]> for Color {
-    fn from(value: [f32; 4]) -> Self {
-        Color {r: value[0], g: value[1], b: value[2] , a: value[3]}
-    }
-}
-
 impl From<backend::Color> for macroquad::prelude::Color {
     fn from(value: backend::Color) -> Self {
         Self {r: value.r, g: value.g, b: value.b, a: value.a}
@@ -161,9 +155,6 @@ impl Macroquad {
 
 impl Backend for Macroquad {
     // type Assets = Assets;
-    fn init(&'static mut self) {
-        
-    }
     fn render_ui<'a>(&mut self, messages: &mut Vec<ui::Message>, view: ui::View<'a>) {
         self.interface.view(messages, view);
     }
