@@ -4,8 +4,8 @@ use crate::ui;
 #[cfg(feature="wgpu")]
 mod wgpu;
 
-// #[cfg(feature="mquad")]
-#[cfg_attr(any(feature="mquad", rust_analyzer), path = "mquad/mod.rs")]
+#[cfg(feature="mquad")]
+// #[cfg_attr(any(feature="mquad", rust_analyzer), path = "mquad/mod.rs")]
 pub mod mquad;
 
 #[repr(C)]
@@ -21,6 +21,7 @@ pub struct Color { pub r: f32, pub g: f32, pub b: f32, pub a: f32 }
 pub trait Backend {
     // type Event;
     // type Assets;
+    fn init(&'static mut self);
     fn render_ui<'a>(&mut self, messages: &mut Vec<ui::Message>, view: ui::View<'a>);
 
     fn set_buffer(&mut self, data: Vec<u8>);

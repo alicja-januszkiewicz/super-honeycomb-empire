@@ -161,6 +161,9 @@ impl Macroquad {
 
 impl Backend for Macroquad {
     // type Assets = Assets;
+    fn init(&'static mut self) {
+        
+    }
     fn render_ui<'a>(&mut self, messages: &mut Vec<ui::Message>, view: ui::View<'a>) {
         self.interface.view(messages, view);
     }
