@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["mquad"]
+default = ["wgpu"]
 wgpu = []
 mquad = []
 
@@ -46,7 +46,7 @@ hashbrown = "0.14.5"
 # iced_glow = "0.8.0"
 iced_macroquad = { git = "https://github.com/B0ney/iced_macroquad/", version = "0.1.0", features=["advanced", "image"] }
 chrono = "0.4.39"
-winit = "0.29"
+#winit = "0.29"
 wgpu = "0.19"
 pollster = "0.4.0"
 # iced = "0.13.1"
@@ -59,6 +59,7 @@ tokio = { version = "1.0", features = ["full"] }
 cgmath = "0.18"
 iced = { version="0.13.1", features = ["image"] }
 glyphon = "0.9.0"
+winit = "0.30.12"
 
 #[[bin]]
 #name = "main_real_game"

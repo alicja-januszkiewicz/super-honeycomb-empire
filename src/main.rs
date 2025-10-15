@@ -111,9 +111,12 @@ fn load_resources() -> GameResources {
     // let locality_names = locality_names_v.iter().map(String::as_str).collect();
     // let locality_names: Vec<&str> = locality_names_v.iter().map(|s| &**s).collect();
 
-    let size = [32.,32.];
+    // let size = [0.05,0.05];//[32.,32.];
+    let size = [1.0,1.0];//[32.,32.];
     let origin = [0., 0.];
     let init_layout = cubic::Layout{orientation: cubic::OrientationKind::Flat(cubic::FLAT), size, origin};
+    // let init_layout = cubic::Layout{orientation: cubic::OrientationKind::Pointy(cubic::POINTY), size, origin};
+
 
         //let shape = vec!((300.,10.), (1000., 100.), (1000., 500.), (5000., 500.), (5000., 100.), (300., 10.));
     //let v: serde_json::Value = serde_json::from_str(data).unwrap();
@@ -411,8 +414,8 @@ fn main() {
 
     // let app: &mut dyn Component<BackendType, Message = Message> = &mut get_app(&mut resources);
     // let component = Some(&mut get_app(&mut resources));
-    // let mut component = Some(get_app::<network::Offline, BackendType>(&mut resources));
-    let mut component: Option<Box<dyn ErasedComponent<BackendType>>> = Some(Box::new(Ui::new()));
+    let mut component = Some(get_app::<network::Offline, BackendType>(&mut resources));
+    // let mut component: Option<Box<dyn ErasedComponent<BackendType>>> = Some(Box::new(Ui::new()));
 
     // let mut component: Option<Box<dyn Component<BackendType>>> = Some(get_app::<BackendType, Game>(&mut resources));
     // let component = new_game(&mut resources);

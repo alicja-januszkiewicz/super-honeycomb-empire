@@ -193,8 +193,8 @@ impl Game {
         }
     }
     pub fn init_world(game: &mut Self, resources: &mut GameResources) {
-        let shape_gen = ShapeGen::Custom(resources.shape.clone());
-        // let shape_gen = ShapeGen::Hexagonal(8);
+        // let shape_gen = ShapeGen::Custom(resources.shape.clone());
+        let shape_gen = ShapeGen::Hexagonal(8);
         let river_gen = RiverGen::Custom(resources.river.clone());
         // let river_gen = RiverGen::Random(300, 0.3);
         let localities_gen = LocalitiesGen::Random;
@@ -333,6 +333,7 @@ impl<B: Backend> Component<B> for Game {
         let view = self.current_player_index()
             .and_then(|pid| self.player_views.get(&pid))
             .unwrap_or(&self.world);
+        let view = &self.world;
 
         // B::draw_base_tiles(view, &layout, &assets, time);
         // B::draw_game_tiles(view, &layout, &assets);

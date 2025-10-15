@@ -20,7 +20,7 @@ use serde::{Serialize, Deserialize};
 #[derive(Default, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Cube<T>(T, T);
 
-#[derive(Default, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Pixel<T>(pub T, pub T);
 
 impl<T: Add<T, Output = T>> Add<Pixel<T>> for Pixel<T> {
@@ -201,17 +201,17 @@ impl<T, U: Copy> Mul<U> for Cube<T> where T: Mul<U> {
 // }
 
 impl<T> Cube<T> where T: Copy + Signed + Mul + From<f32> + num::Float {
-    pub fn to_pixel(&self, &layout: &Layout<T>) -> Pixel<T> {
-        let matrix = layout.orientation.inner();
-        let size = layout.size;
-        let origin = layout.origin;
+    pub fn to_pixel(&self, layout: &Layout<T>) -> Pixel<T> {
+        let Layout { orientation, size, origin } = *layout;
+        let m = orientation.inner();
 
         // let hw = (screen_width() / 2.).into();
         // let hh = (screen_height() / 2.).into();
 
-        let x = ((matrix.f0 * self.q() + matrix.f1 * self.r()) * size[0]);// / hw;
-        let y = ((matrix.f2 * self.q() + matrix.f3 * self.r()) * size[1]);// / hh;
-        Pixel(x + origin[0], y + origin[1])
+        let x = ((m.f0 * self.q() + m.f1 * self.r()) * size[0]) + origin[0];// / hw;
+        let y = ((m.f2 * self.q() + m.f3 * self.r()) * size[1]) + origin[1];// / hh;
+
+        Pixel(x , y)
     }
     fn corner_offset(&layout: &Layout<T>, corner: u8) -> Pixel<T> {
         let matrix = layout.orientation.inner();
@@ -349,7 +349,7 @@ pub struct Orientation<T> {
     b1: T,
     b2: T,
     b3: T,
-    start_angle: T,
+    pub start_angle: T,
 }
 
 #[derive(Clone, Copy)]
@@ -395,6 +395,29 @@ pub enum OrientationKind<T> {
     Flat(Orientation<T>),
     // Pointy(T),
     // Flat(T),
+}
+
+impl<T> OrientationKind<T> {
+    pub fn into_inner(self) -> Orientation<T> {
+        match self {
+            OrientationKind::Pointy(v) | OrientationKind::Flat(v) => v,
+        }
+    }
+
+    pub fn apply_mut<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut Orientation<T>),
+    {
+        match self {
+            OrientationKind::Flat(o) | OrientationKind::Pointy(o) => f(o),
+        }
+    }
+
+    pub fn as_ref(&self) -> &Orientation<T> {
+        match self {
+            OrientationKind::Flat(o) | OrientationKind::Pointy(o) => o,
+        }
+    }
 }
 
 // impl<T: From<f32> + Div<Output = T>> OrientationKind<T> {

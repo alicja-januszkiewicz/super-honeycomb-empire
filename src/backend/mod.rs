@@ -55,7 +55,7 @@ pub trait Backend {
     fn clear(color: Color);
     // fn draw_base_tiles(view: &World, layout: &Layout<f32>, assets: &Self::Assets, time: f32);
     // fn draw_game_tiles(view: &World, layout: &Layout<f32>, assets: &Self::Assets);
-    fn draw_base_tiles(&self, view: &World, layout: &Layout<f32>, time: f32);
+    fn draw_base_tiles(&mut self, view: &World, layout: &Layout<f32>, time: f32);
     fn draw_game_tiles(&self, view: &World, layout: &Layout<f32>);
     fn draw_army_legal_moves(game: &Game, layout: &Layout<f32>);
     fn draw_army_can_move_indicator(game: &Game, layout: &Layout<f32>);
@@ -85,7 +85,7 @@ pub trait Backend {
 // #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 // pub struct FontId(u32);
 
-pub fn draw_thumb<B: Backend>(world: &World, &layout: &Layout<f32>, backend: &B, resources: &GameResources, time: f32) {
+pub fn draw_thumb<B: Backend>(world: &World, &layout: &Layout<f32>, backend: &mut B, resources: &GameResources, time: f32) {
     let color = Color { r: 0.31, g: 0.31, b: 0.31, a: 1.0 };
     B::clear(color);
 
